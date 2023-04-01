@@ -144,6 +144,7 @@ class ReRankingTrainer(nn.Module):
     epochs     = 10000
     old_perfm  = 0
     loss_log   = []
+    lr_step = 1000
 
     # TRAIN PERFORMANCE
     base_loop,base_sim =  trainloader.dataset.get_base_loops()
@@ -161,8 +162,9 @@ class ReRankingTrainer(nn.Module):
       value = np.round(np.mean(loss),3)
       loss_log.append(value)
 
-      if epoch%3000 == 0 and epoch >0:
+      if epoch%lr_step == 0 and epoch >0:
         self.optimizer.param_groups[0]['lr'] = self.optimizer.param_groups[0]['lr']/10
+      
       if epoch%tain_report_terminal == 0:
         print('T ({}) | Loss {:.10f}'.format(epoch,np.mean(loss_log)))
       
@@ -190,12 +192,12 @@ class ReRankingTrainer(nn.Module):
 
 root = '/home/tiago/Dropbox/RAS-publication/predictions/paper/kitti'
 model_name = 'ORCHNet_pointnet'
-sequence = '00'
+sequence = '02'
 train_data = RankingDataset(root,model_name,sequence)
 trainloader = DataLoader(train_data,batch_size = len(train_data),shuffle=False)
 
 # LOAD TEST DATA
-sequence = '00'
+sequence = '02'
 test_data = RankingDataset(root,model_name,sequence)
 testloader = DataLoader(test_data,batch_size = len(test_data)) #
 
