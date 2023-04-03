@@ -84,24 +84,55 @@ class ML(torch.nn.Module):
         [B, Cin, N] -> [B, Cout, N] or
         [B, Cin] -> [B, Cout]
     """
-    def __init__(self,):
+    def __init__(self,cand=35,feat_size = 256):
         super().__init__()
         
-        self.W =  nn.Parameter(torch.zeros(25,256))
-        nn.init.normal_(self.param.data, mean=0, std=0.1)
+        self.Win =  nn.Parameter(torch.zeros(256,25))
+        self.Wout =  nn.Parameter(torch.zeros(25,1))
+        
+        nn.init.normal_(self.Win.data, mean=0, std=0.1)
+        nn.init.normal_(self.Wout.data, mean=0, std=0.1)
+
         #self.layers = torch.nn.Sequential(*list_layers)
-        #self.classifier = nn.Softmax(dim=1)
-        #self.classifier  = torch.nn.Conv1d(25, 25, 1)
+        #self.classifier = nn.Softmax(dim=-1)
+        layers  = []
+        layers.append(torch.nn.Conv1d(25, 25, 1))
+        #layers.append(weights)
+        #layers.append(torch.nn.BatchNorm1d(25, momentum=0.1))
+        layers.append(torch.nn.ReLU())
+        self.classifier = torch.nn.Sequential(*layers)
+        self.att = torch.nn.MultiheadAttention(256,1)
 
-    def forward(self, inp):
 
-        inp = inp.unsqueeze(1)
-        inp = inp/inp.max()
-        inp[inp <0.001] = 0.00001
-        inp = torch.matmul(inp,self.param)
+    def forward(self, q,k):
+        #x1 =  F.softmin(x,dim=1)
+        #print(' '.join([str(a) for a in x[0].detach().cpu().numpy()]))
+        #print(x.detach().cpu().numpy())
+        #inp = inp.unsqueeze(1)
+        #inp = inp/inp.max()
+        #inp[inp <0.001] = 0.00001
+        #if self.training():
+        #q = x['q']
+        #k = x['k']
+        #v = x['k']
+
+        #out1 = torch.matmul(,self.Win)
+
+        out = self.att(q,k,k)
+        #out=self.classifier(out1)
+        #out = out + out1
+
+        if self.training:
+           return out.float()
+        
+        outmax = torch.argmax(out,dim=-1)
+        
+        print(out[0][0].detach().cpu().numpy())
+        print(outmax[0][0].detach().cpu().numpy())
+        #out = torch.matmul(inp,self.Wout)
         
         #out = self.layers(inp)
         #out = self.classifier(out)
         #out = out.detach().numpy()
         #out = torch.argmax(out,dim=1).float()
-        return inp.float()
+        return outmax.float()

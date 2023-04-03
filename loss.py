@@ -10,6 +10,26 @@ def L2_loss(a,b, dim=0, eps=1e-8):
     value = torch.sqrt(torch.sum(squared_diff,dim=dim)+eps)
     return torch.max(value,torch.tensor(eps))
 
+
+class CERanking():
+    def __init__(self,verbose=False):
+        pass
+        self.verbose = verbose
+        self.bce = nn.BCEWithLogitsLoss()
+
+    def __call__(self,x,y):
+        value = 0
+        
+        for bxx,byy in zip(x,y):
+            for xx,yy in zip(bxx,byy):
+                #print(xx.detach().cpu().numpy())
+                #print(yy.detach().cpu().numpy())
+                value = value + self.bce(xx,yy)
+        value = value/(y.shape[0]*y.shape[1])
+       
+        return value
+    
+
 class WeightedRanking():
     def __init__(self,verbose=False):
         pass

@@ -22,10 +22,12 @@ class RankingDataset():
     self.targets = data['t']
     target_relevance = data['p']['ed']
     descriptors = data['d']
+    queries = data['q']
 
     self.base_loops,self.base_relevance= comp_loops(data['f']['ed'], data['q'],window=500)
     
     self.base_descriptors = np.array([descriptors[l] for l in self.base_loops])
+    self.base_query_descriptors = descriptors[queries]
     self.base_target_relevance = np.array([d[l] for d,l in zip(target_relevance,self.base_loops)])
 
     #target_ord = np.array([l[np.argsort(d[l])] for d,l in zip(pose,self.targets)])
@@ -37,7 +39,7 @@ class RankingDataset():
     return self.base_loops,self.base_relevance
   
   def get_targets(self):
-    return self.base_target_relevance
+    return self.targets
 
   def load_data(self):
     trining_data = torch.load(self.file2load)
@@ -59,9 +61,18 @@ class RankingDataset():
 
   def __getitem__(self,idx):
     target = np.argsort(self.base_target_relevance[idx])
-    pred = self.base_descriptors[idx]
-    pred = torch.from_numpy(pred).float()
-    target = torch.from_numpy(target).float()
+    target_mat = np.zeros((25,25))
+    for i,j in enumerate(target):
+      target_mat[i,j]=1
+
+    queries = self.base_query_descriptors[idx]
+    queries = torch.from_numpy(queries).unsqueeze(dim=0).float()
+
+    keys = self.base_descriptors[idx]
+    #pred = {'q':self.base_query_descriptors[idx],'k': self.base_descriptors[idx]}
+    #pred = self.base_descriptors[idx]
+    keys = torch.from_numpy(keys).float()
+    target = torch.from_numpy(target_mat).float()
     
     #target = self.norm(target)
-    return pred,target
+    return keys,target
