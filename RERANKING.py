@@ -13,11 +13,11 @@ class FC(nn.Module):
              #nn.LazyLinear(outdim),
              nn.ReLU()]
     
-    #self.fc = nn.Sequential(*[nn.LazyLinear(outdim_list[i]).float() for i in range(3)])
-    self.fc = nn.Sequential(*fc)
+    self.fc = nn.Sequential(*[nn.LazyLinear(outdim_list[i]).float() for i in range(3)])
+    #self.fc = nn.Sequential(*fc)
     
   def forward(self,x):
-    #return F.softmax(self.fc(x),dim=1)
+    x =  F.softmin(x,dim=1)
     return self.fc(x)
   
 
@@ -84,10 +84,10 @@ class ML(torch.nn.Module):
         [B, Cin, N] -> [B, Cout, N] or
         [B, Cin] -> [B, Cout]
     """
-    def __init__(self, nch_input, nch_layers=[25], b_shared=True, bn_momentum=0.1, dropout=0.0):
+    def __init__(self,):
         super().__init__()
         
-        self.param =  nn.Parameter(torch.zeros(25,25))
+        self.W =  nn.Parameter(torch.zeros(25,256))
         nn.init.normal_(self.param.data, mean=0, std=0.1)
         #self.layers = torch.nn.Sequential(*list_layers)
         #self.classifier = nn.Softmax(dim=1)
