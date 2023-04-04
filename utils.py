@@ -1,7 +1,7 @@
 
 import numpy as np
 
-def comp_loops(sim_map,queries,window=500):
+def comp_loops(sim_map,queries,window=500,max_top_cand=25):
   loop_cand = []
   loop_sim = []
   for i,q in enumerate(queries):
@@ -9,7 +9,7 @@ def comp_loops(sim_map,queries,window=500):
     bottom = q-window 
     elegible = sim[:bottom]
     #elegible = sim
-    cand = np.argsort(elegible)[:25]
+    cand = np.argsort(elegible)[:max_top_cand]
     sim = elegible[cand]
     sim = elegible[cand]
     loop_sim.append(sim)

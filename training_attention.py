@@ -96,12 +96,12 @@ class AttentionTrainer(ReRankingTrainer):
       gt = gt.to(self.device)
 
       out = self.model(batch)
-      print("\n\n")
-      a = torch.argsort(out[0],dim=-1,descending=True)
-      print(a.detach().cpu().numpy())
+      #print("\n\n")
+      #a = torch.argsort(out[0],dim=-1,descending=True)
+      #print(a.detach().cpu().numpy())
 
-      b = torch.argsort(gt[0],dim=-1,descending=True)
-      print(b.detach().cpu().numpy())
+      #b = torch.argsort(gt[0],dim=-1,descending=True)
+      #print(b.detach().cpu().numpy())
 
       loss_value = self.loss(out,gt)
       loss_value.backward()
@@ -152,7 +152,7 @@ def load_data(root,model_name,seq,train_percentage):
 # LOAD TTRAINING DATA
 
 root = '/home/tiago/Dropbox/RAS-publication/predictions/paper/kitti'
-model_name = 'ORCHNet_pointnet'
+model_name = 'VLAD_pointnet'
 sequence = '08'
 trainloader,testloader = load_data(root,model_name,sequence,0.2)
 #trainloader,testloader  = load_cross_data(root,model_name,sequence,sequence)

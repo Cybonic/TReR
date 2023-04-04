@@ -53,11 +53,11 @@ def comp_loops(sim_map,queries,window=500):
 # LOAD PREDICTION DATA
 root = '/home/tiago/Dropbox/RAS-publication/predictions/paper/kitti'
 sequence = '02_05_06_08'
-model = 'ORCHNet_pointnet'
+model = 'VLAD_pointnet'
 
 
-sequence = ['06']
-sequence_num = ['00_02_05_08']
+sequence = ['00','02','05','06','08']
+sequence_num = ['02_05_06_08','00_05_06_08','00_02_06_08','00_02_05_08','00_02_05_06']
 
 for i in range(5):
 
