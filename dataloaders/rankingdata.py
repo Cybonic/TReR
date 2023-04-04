@@ -76,3 +76,24 @@ class RankingDataset():
     
     #target = self.norm(target)
     return keys,target
+
+
+class RankingMSE(RankingDataset):
+  def __init__(self,root,model_name,sequence):
+    super().__init__(root,model_name,sequence)
+    pass
+
+  def __getitem__(self,idx):
+    target = np.argsort(self.base_target_relevance[idx])
+    target_ranked = np.zeros(target.shape[0])
+
+    #target = torch.argsort(target,dim=-1)
+    rank = np.arange(1,26,1)[::-1]
+    target_ranked[target] = rank
+    #print(target_ranked.detach().numpy())
+    keys = self.base_descriptors[idx]
+    keys = torch.from_numpy(keys).float()
+    target = torch.from_numpy(target_ranked).float()
+    
+    #target = self.norm(target)
+    return keys,target

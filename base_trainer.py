@@ -30,25 +30,39 @@ class ReRankingTrainer(nn.Module):
     self.model = model.to(device)
     self.loss  = loss
     self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr)
+    self.top_cand = [1,25]
 
 
   def Train(self,trainloader,testloader):
     old_perfm  = 0
     loss_log   = []
 
+    try:
+      base_loop,base_sim =  trainloader.dataset.dataset.get_base_loops()
+      targets =trainloader.dataset.dataset.get_targets()
+      test_base_loop,test_base_sim =  testloader.dataset.dataset.get_base_loops()
+      test_targets = testloader.dataset.dataset.get_targets()  
+    except:
+      base_loop,base_sim =  trainloader.dataset.get_base_loops()
+      targets =trainloader.dataset.get_targets()
+      test_base_loop,test_base_sim =  testloader.dataset.get_base_loops()
+      test_targets = testloader.dataset.get_targets() 
+
     # TRAIN PERFORMANCE
-    base_loop,base_sim =  trainloader.dataset.get_base_loops()
-    targets =trainloader.dataset.get_targets()  
-    base_perfm = retrieve_eval(base_loop,targets,top=1)
+    base_perfm = retrieve_eval(base_loop,targets,top=2)
 
     # TEST PERFORMANCE
-    test_base_loop,test_base_sim =  testloader.dataset.get_base_loops()
-    test_targets = testloader.dataset.get_targets()  
-    test_base_perfm = retrieve_eval(test_base_loop,test_targets,top=1)
+    test_perf_record = {}
+    for i in self.top_cand:
+      rerank_perfm = retrieve_eval(test_base_loop,test_targets,top=i)
+      test_perf_record[i]=rerank_perfm
 
+    # test_base_perfm = retrieve_eval(test_base_loop,test_targets,top=2)
+
+    best_perf_record = []
     for epoch in range(self.epochs):
       
-      loss = self.train_epoch(epoch,trainloader)
+      loss  = self.train_epoch(epoch,trainloader)
       value = np.round(np.mean(loss),3)
       loss_log.append(value)
 
@@ -61,19 +75,27 @@ class ReRankingTrainer(nn.Module):
       # Val 
       if epoch % self.val_report == 0:
         rerank_loops = self.predict(testloader,test_base_loop)
-        rerank_perfm = retrieve_eval(rerank_loops,targets,top=1)
         
-        delta = rerank_perfm['recall'] - test_base_perfm['recall']
+        perf_record = {}
+        for i in self.top_cand:
+          rerank_perfm = retrieve_eval(rerank_loops,targets,top=i)
+          perf_record[i]=rerank_perfm
+        
+        delta = perf_record[1]['recall'] - test_perf_record[1]['recall']
         print(f"\nReRank Recall: {round(rerank_perfm['recall'],5)} | delta: {round(delta,5)} ")
 
-        if rerank_perfm['recall']>old_perfm:
-          old_perfm = rerank_perfm['recall']
+        if perf_record[1]['recall']>old_perfm:
+          old_perfm = perf_record[1]['recall']
           print("\nBest performance\n")
+          best_perf_record = perf_record
           #save_log = [ed_sim,ed_loop,rerank_loops,scores,target_ord]
     
     print("\n ******************Best*********************\n")
-    print(f"BaseLine  {test_base_perfm['recall']}")
-    print(f"Reranking {old_perfm}")
+    print(f"BaseLine  {test_perf_record[1]['recall']}")
+    print(f"Reranking {best_perf_record[1]['recall']}")
+
+
+
 
 
 

@@ -10,7 +10,7 @@ import numpy as np
 from utils import retrieve_eval
 
 from torch.utils.data import DataLoader
-from dataloaders.rankingdata import RankingDataset
+from dataloaders.rankingdata import RankingDataset,RankingMSE
 
 import RERANKING
 import loss 
@@ -19,10 +19,6 @@ from base_trainer import ReRankingTrainer
 
 
 class AttentionRanking(torch.nn.Module):
-    """ Multi-layer perception.
-        [B, Cin, N] -> [B, Cout, N] or
-        [B, Cin] -> [B, Cout]
-    """
     def __init__(self,cand=35,feat_size = 256):
         super().__init__()
         
@@ -32,44 +28,57 @@ class AttentionRanking(torch.nn.Module):
         nn.init.normal_(self.Win.data, mean=0, std=0.1)
         nn.init.normal_(self.Wout.data, mean=0, std=0.1)
 
-        self.att = torch.nn.MultiheadAttention(256,2)
-        self.row_norm = nn.LogSoftmax(dim=2)
-        self.column_norm = nn.LogSoftmax(dim=1)
+        self.att = torch.nn.MultiheadAttention(256,1)
+        self.classifier = torch.nn.Conv1d(256, 1, 1)
 
 
     def forward(self,k):
+        
         out, attn_output_weights = self.att(k,k,k)
-        out = torch.matmul(out,self.Win)
-        out = self.column_norm(self.row_norm(out))
+        out = torch.transpose(out,dim0=2,dim1=1)
+        out = self.classifier(out).squeeze()
+        #out = torch.matmul(out,self.Win)
+        #out = self.column_norm(out)
         if self.training:
            return out.float()
         
-        outmax = torch.argmax(out,dim=-1)
+        #outmax = torch.argmax(out,dim=-1)
         
         #print(out[0][0].detach().cpu().numpy())
         #print(outmax[0][0].detach().cpu().numpy())
-        return outmax.float()
+        return out.float()
     
 # =====================================================
-class CERanking():
-    def __init__(self,verbose=False):
+
+
+class MSERanking():
+    def __init__(self,verbose=False,device='cpu'):
         pass
+        self.device=device
         self.verbose = verbose
         self.bce = nn.NLLLoss()
+        self.bce = nn.MSELoss()
+        #self.bce = nn.KLDivLoss()
+        linear_scale = torch.from_numpy(np.arange(0,25,1).copy())
+        #self.scale = torch.exp(-linear_scale/0.1).to(self.device)
+        self.scale = torch.ones(25).to(self.device)
 
     def __call__(self,x,y):
         value = 0
-        target = torch.argmax(y,dim=-1)
-        #for bxx,byy in zip(x,y):
-            #for xx,yy in zip(bxx,byy):
-                #print(xx.detach().cpu().numpy())
-                #print(yy.detach().cpu().numpy())
-        value = self.bce(x,target)
-        #value = value + self.bce(x,target)
-        #value = value/(y.shape[0]*y.shape[1])
-       
-        return value
-    
+        x = F.log_softmax(x,dim=-1)
+        y = F.log_softmax(y,dim=-1)
+
+        error = self.bce(x,y)
+        #weights = torch.zeros(25).to(self.device)
+        #error = torch.tensor(0).to(self.device) 
+        #for i,(xx,yy) in enumerate(zip(x,y)):
+        #  sort = torch.argsort(yy.detach(),descending=True)
+        #  weights[sort] = self.scale
+        #  error = error + torch.matmul(weights.clone(),torch.pow((yy-xx),2))
+        #error = torch.div(error,x.shape[0])
+
+        return error.float()
+      
   
 class AttentionTrainer(ReRankingTrainer):
   def __init__(self,**args):
@@ -81,15 +90,18 @@ class AttentionTrainer(ReRankingTrainer):
     self.model.train()
     loss_buffer = []
     for batch,gt in loader:
+      #batch = batch.to(self.device)
       self.optimizer.zero_grad()
       batch = batch.to(self.device)
       gt = gt.to(self.device)
 
       out = self.model(batch)
       print("\n\n")
-      print(np.argmax(out[0].detach().cpu().numpy(),axis=-1))
+      a = torch.argsort(out[0],dim=-1,descending=True)
+      print(a.detach().cpu().numpy())
 
-      print(np.argmax(gt[0].detach().cpu().numpy(),axis=1))
+      b = torch.argsort(gt[0],dim=-1,descending=True)
+      print(b.detach().cpu().numpy())
 
       loss_value = self.loss(out,gt)
       loss_value.backward()
@@ -103,10 +115,10 @@ class AttentionTrainer(ReRankingTrainer):
       re_rank_idx = []
       for x,_ in testloader:
         #x = 1-x # .cuda()
+        x = x.to(self.device)
         values = self.model(x)
-        #out = values.detach().cpu().numpy()
-        #print()
-        #values = torch.argsort(values,descending=True)
+
+        values = torch.argsort(values,dim=-1,descending=True)
         
         values = values.detach().cpu().numpy().astype(np.uint8)
         re_rank_idx.extend(values)
@@ -115,26 +127,44 @@ class AttentionTrainer(ReRankingTrainer):
       return(rerank_loops)
 
 
+def load_cross_data(root,model_name,seq_train,seq_test):
+  train_data = RankingMSE(root,model_name,seq_train)
+  trainloader = DataLoader(train_data,batch_size = len(train_data),shuffle=True)
 
+  # LOAD TEST DATA
+  test_data = RankingMSE(root,model_name,seq_test)
+  testloader = DataLoader(test_data,batch_size = len(test_data)) #
+
+  return trainloader,testloader
+
+def load_data(root,model_name,seq,train_percentage):
+  train_data = RankingMSE(root,model_name,seq)
+
+  train_size = int(len(train_data)*train_percentage)
+  test_size = len(train_data) - train_size
+
+  train, test =torch.utils.data.random_split(train_data,[train_size,test_size])
+  
+  trainloader = DataLoader(train,batch_size = len(train),shuffle=True)
+  testloader = DataLoader(test,batch_size = len(test)) #
+
+  return trainloader,testloader
 # LOAD TTRAINING DATA
 
 root = '/home/tiago/Dropbox/RAS-publication/predictions/paper/kitti'
 model_name = 'ORCHNet_pointnet'
-sequence = '00'
-train_data = RankingDataset(root,model_name,sequence)
-trainloader = DataLoader(train_data,batch_size = len(train_data),shuffle=False)
-
-# LOAD TEST DATA
-sequence = '00'
-test_data = RankingDataset(root,model_name,sequence)
-testloader = DataLoader(test_data,batch_size = len(test_data)) #
+sequence = '08'
+trainloader,testloader = load_data(root,model_name,sequence,0.2)
+#trainloader,testloader  = load_cross_data(root,model_name,sequence,sequence)
 
 #===== RE-RANKING ========
 #loss = nn.MSELoss()
+device = 'cuda:0'
+#device = 'cpu'
 model = AttentionRanking(25,256)
-loss_fun = CERanking() 
+loss_fun = MSERanking(device=device) 
 
-rerank = AttentionTrainer(loss = loss_fun, model = model,lr= 0.01,epochs = 200,lr_step=20,val_report=1,tain_report_terminal=1,device='cpu')
+rerank = AttentionTrainer(loss = loss_fun, model = model,lr= 0.01,epochs = 400,lr_step=50000000,val_report=1,tain_report_terminal=1,device=device)
 
 rerank.Train(trainloader,testloader)
 
