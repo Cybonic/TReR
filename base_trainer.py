@@ -108,7 +108,7 @@ class ReRankingTrainer(nn.Module):
         'monitor_best': best_log,
     }
     best = round(best_log[1]['recall'],2)
-    checkpoint_dir = 'results'
+    checkpoint_dir = ''
     filename = os.path.join(checkpoint_dir, f'{filename}-{best}.pth')
     torch.save(state, filename)
     print("Saving current best: best_model.pth")
@@ -136,7 +136,7 @@ class ReRankingTrainer(nn.Module):
     rows = np.concatenate((top_cand,array),axis=1)
     df = pd.DataFrame(rows,columns = colum)
     #file_results = file + '_' + 'best_model.csv'
-    checkpoint_dir = 'results'
+    checkpoint_dir = ''
     filename = os.path.join(checkpoint_dir,f'{file}-{str(best)}.csv')
     df.to_csv(filename)
 

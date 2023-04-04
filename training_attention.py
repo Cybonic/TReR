@@ -31,7 +31,8 @@ class AttentionRanking(torch.nn.Module):
         self.att = torch.nn.MultiheadAttention(256,1)
         self.classifier = torch.nn.Conv1d(256, 1, 1)
 
-
+    def __str__(self):
+      return "AttentionRanking"
     def forward(self,k):
         
         out, attn_output_weights = self.att(k,k,k)
@@ -52,31 +53,12 @@ class AttentionRanking(torch.nn.Module):
 
 
 class MSERanking():
-    def __init__(self,verbose=False,device='cpu'):
-        pass
-        self.device=device
-        self.verbose = verbose
-        self.bce = nn.NLLLoss()
+    def __init__(self):
         self.bce = nn.MSELoss()
-        #self.bce = nn.KLDivLoss()
-        linear_scale = torch.from_numpy(np.arange(0,25,1).copy())
-        #self.scale = torch.exp(-linear_scale/0.1).to(self.device)
-        self.scale = torch.ones(25).to(self.device)
-
     def __call__(self,x,y):
-        value = 0
-        x = F.log_softmax(x,dim=-1)
-        y = F.log_softmax(y,dim=-1)
-
+        x = F.softmax(x,dim=-1)
+        y = F.softmax(y,dim=-1)
         error = self.bce(x,y)
-        #weights = torch.zeros(25).to(self.device)
-        #error = torch.tensor(0).to(self.device) 
-        #for i,(xx,yy) in enumerate(zip(x,y)):
-        #  sort = torch.argsort(yy.detach(),descending=True)
-        #  weights[sort] = self.scale
-        #  error = error + torch.matmul(weights.clone(),torch.pow((yy-xx),2))
-        #error = torch.div(error,x.shape[0])
-
         return error.float()
       
   
@@ -153,8 +135,11 @@ def load_data(root,model_name,seq,train_percentage):
 
 root = '/home/tiago/Dropbox/RAS-publication/predictions/paper/kitti'
 model_name = 'VLAD_pointnet'
+model_name = 'ORCHNet_pointnet'
 sequence = '08'
-trainloader,testloader = load_data(root,model_name,sequence,0.2)
+
+train_size = 0.2
+trainloader,testloader = load_data(root,model_name,sequence,train_size)
 #trainloader,testloader  = load_cross_data(root,model_name,sequence,sequence)
 
 #===== RE-RANKING ========
@@ -162,9 +147,15 @@ trainloader,testloader = load_data(root,model_name,sequence,0.2)
 device = 'cuda:0'
 #device = 'cpu'
 model = AttentionRanking(25,256)
-loss_fun = MSERanking(device=device) 
+loss_fun = MSERanking()
 
-rerank = AttentionTrainer(loss = loss_fun, model = model,lr= 0.01,epochs = 400,lr_step=50000000,val_report=1,tain_report_terminal=1,device=device)
+root = os.path.join('results',model_name,sequence)
+
+if not os.path.isdir(root):
+   os.makedirs(root)
+
+experiment = os.path.join(root,f'{str(model)}-{str(train_size)}')
+rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model,lr= 0.01,epochs = 400,lr_step=50000000,val_report=1,tain_report_terminal=1,device=device)
 
 rerank.Train(trainloader,testloader)
 
