@@ -46,19 +46,21 @@ class MaskRanking(torch.nn.Module):
     def __init__(self,cand=35,feat_size = 256):
       super().__init__()
         
-      self.Win =  nn.Parameter(torch.zeros(4,256,cand))
+      self.Win =  nn.Parameter(torch.zeros(10,256,cand))
       self.Wout =  nn.Parameter(torch.zeros(cand,1))
         
-      nn.init.normal_(self.Win.data, mean=0, std=0.1)
-      nn.init.normal_(self.Wout.data, mean=0, std=0.1)
+      nn.init.normal_(self.Win.data, mean=0, std=0.5)
+      nn.init.normal_(self.Wout.data, mean=0, std=0.5)
 
-      self.att = torch.nn.MultiheadAttention(256,1)
-      self.classifier = torch.nn.Conv1d(256, 1, 1)
+      self.att = torch.nn.MultiheadAttention(cand,1)
+      self.classifier = torch.nn.Conv1d(cand, 1, 1)
 
       fc = [ nn.LazyLinear(cand),
              nn.BatchNorm1d(cand, momentum=0.01),
              #nn.LazyLinear(outdim),
-             nn.ReLU()]
+             #nn.ReLU()
+             ]
+      
     
       self.fc = nn.Sequential(*fc)
 
@@ -66,17 +68,22 @@ class MaskRanking(torch.nn.Module):
       return "MaskRanking"
     
     def forward(self,k):
-      #out = []
+      out = []
       #for w in  self.Win:
       #  out.append(torch.matmul(k,w))
-      
+      #out = k
       #ou_stack = torch.stack(out,dim=1)
-      #out = torch.mean(ou_stack,dim=1)
-      out, attn_output_weights = self.att(k,k,k)
-      out = torch.transpose(out,dim0=2,dim1=1)
+      #mean_out,std_out = torch.std_mean(ou_stack,dim=1)
+
+      out,idx  = torch.max(k,dim=-1)
+      #
+      #out = out  + k
+      #out = torch.transpose(out,dim0=2,dim1=1)
       #out = torch.matmul(out,self.Wout).squeeze()
-      out = self.classifier(out).squeeze()
+      #out = self.classifier(out).squeeze()
       out = self.fc(out)
+      #out, attn_output_weights = self.att(out,out,out)
+
       if self.training:
           return out.float()
       return out.float()
@@ -109,11 +116,9 @@ class AttentionTrainer(ReRankingTrainer):
       self.optimizer.zero_grad()
       batch = batch.to(self.device)
       gt = gt.to(self.device)
-      #std = 0.001*epoch
-      #noise = torch.randn(batch.size()) * std + 0
-      
+      std = 0.01
+      noise = torch.randn(batch.size()) * std + 0
       #batch = batch + noise.to(self.device)
-      #noise =  torch.random.normal(0, 0.1, size=keys.shape)
       out = self.model(batch)
       #print("\n\n")
       #a = torch.argsort(out[0],dim=-1,descending=True)
@@ -174,7 +179,7 @@ train_size = 0.2
 device = 'cuda:0'
 #device = 'cpu'
 
-#sequences = ['00','02','05','06','08']
+sequences = ['00','02','05','06','08']
 sequences = ['00']
 for j in range(1):
   # 'SPoC_pointnet', 'GeM_pointnet' ,
@@ -189,13 +194,14 @@ for j in range(1):
       model = MaskRanking(max_top_cand,256)
       loss_fun = MSERanking()
 
-      root_save = os.path.join('tests','loss_log_softmax',model_name,seq)
+      trainloader,testloader,max_top_cand = load_data(root,model_name,seq,train_size)
+      root_save = os.path.join('tests','loss_softmax',str(train_size),model_name,seq)
       if not os.path.isdir(root_save):
         os.makedirs(root_save)
 
       # experiment = os.path.join(root_save,f'{str(model)}-{str(train_size)}')
       experiment = os.path.join(root_save,f'{str(model)}')
-      rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model,lr= 0.01,epochs = 200,lr_step=5000,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
+      rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model,lr= 0.01,epochs = 1000,lr_step=900,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
 
       rerank.Train(trainloader,testloader)
 
