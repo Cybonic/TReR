@@ -23,7 +23,7 @@ def compute_distance(query_data,data):
   ed_matrix = np.empty((m,n))
 
   for i,x in tqdm(enumerate(query_data),total=m):
-    time.sleep(0.3)
+    #time.sleep(0.3)
     #for j,y in enumerate(data):
       #value2 = distance.mahalanobis(x,y,inv_covmat)
     x.reshape(1,-1) 
@@ -53,25 +53,28 @@ def comp_loops(sim_map,queries,window=500):
 # LOAD PREDICTION DATA
 root = '/home/tiago/Dropbox/RAS-publication/predictions/paper/kitti'
 sequence = '02_05_06_08'
-model = 'VLAD_pointnet'
+model = 'SPoC_pointnet'
 
 
 sequence = ['00','02','05','06','08']
 sequence_num = ['02_05_06_08','00_05_06_08','00_02_06_08','00_02_05_08','00_02_05_06']
 
-for i in range(5):
+for i in range(1):
 
+  
   file2load = os.path.join(root,sequence_num[i],model,'best_model.torch') 
   trining_data = torch.load(file2load)
 
   descriptors = trining_data['descriptors']
+  queries = trining_data['queries']
+  targets = trining_data['targets']
   data = np.array(list(descriptors.values()))
 
 
   # LOAD GROUND-TRUTH DATA
   ground_truth = torch.load(f'data/gt_kitti-{sequence[i]}.torch')
-  queries = ground_truth['anchors']
-  targets = ground_truth['targets']
+  
+  
   poses = ground_truth['poses']
 
 
@@ -87,7 +90,7 @@ for i in range(5):
   #
   dist_file = f'feat_distance-{sequence[i]}-{model}.torch'
 
-  dist = compute_distance(query_data,data)
-  torch.save(dist,dist_file)
+  #dist = compute_distance(query_data,data)
+  #torch.save(dist,dist_file)
 # feat_dist = torch.load(dist_file)
 

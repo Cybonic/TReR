@@ -19,7 +19,7 @@ import loss
 # =====================================================
 
 class ReRankingTrainer(nn.Module):
-  def __init__(self,model,loss,experiment='deafault',lr = 0.01,epochs = 100,lr_step=100,val_report=1,tain_report_terminal=1,device='cuda',**args):
+  def __init__(self,model,loss,experiment='deafault',lr = 0.01,epochs = 100,lr_step=100,val_report=1,tain_report_terminal=1,device='cuda',max_top_cand=25,**args):
     super(ReRankingTrainer,self).__init__()
     
     self.device = device
@@ -30,7 +30,9 @@ class ReRankingTrainer(nn.Module):
     self.model = model.to(device)
     self.loss  = loss
     self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr)
-    self.top_cand = list(range(1,26))
+    if max_top_cand < 25:
+      max_top_cand = 25
+    self.top_cand = list(range(1,max_top_cand+1))
     self.experiment = experiment
 
 
@@ -72,12 +74,11 @@ class ReRankingTrainer(nn.Module):
   
       if epoch%self.tain_report_terminal == 0:
         print('T ({}) | Loss {:.10f}'.format(epoch,np.mean(loss_log)))
-      
+
       # Val 
       if epoch % self.val_report == 0:
         
         rerank_loops = self.predict(testloader,test_base_loop)
-        
         rerank_perfm = retrieve_eval(rerank_loops,targets,top=1)
        
         delta = rerank_perfm['recall'] - test_perf_record[1]['recall']
@@ -90,11 +91,13 @@ class ReRankingTrainer(nn.Module):
           for i in self.top_cand:
             perf_record[i] = retrieve_eval(rerank_loops,targets,top=i)
 
-          self.save_checkpoint(epoch,perf_record,self.experiment)
-          self.save_results_csv(self.experiment,perf_record,test_perf_record)
+          best_perf_record = perf_record
+          
           print("\nBest performance\n")
           #save_log = [ed_sim,ed_loop,rerank_loops,scores,target_ord]
     
+    self.save_checkpoint(epoch,best_perf_record,self.experiment)
+    self.save_results_csv(self.experiment,best_perf_record,test_perf_record)
     print("\n ******************Best*********************\n")
     print(f"BaseLine  {test_perf_record[1]['recall']}")
     print(f"Reranking {old_perfm}")
