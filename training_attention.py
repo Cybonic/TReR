@@ -10,7 +10,7 @@ import numpy as np
 from utils import retrieve_eval
 
 from torch.utils.data import DataLoader
-from dataloaders.rankingdata import RankingDataset,RankingMSE
+from dataloaders.rankingdata import RankingDataset,RankingMSE,RankingNewRetreivalDataset
 
 import RERANKING
 import loss 
@@ -118,7 +118,7 @@ class AttentionTrainer(ReRankingTrainer):
       gt = gt.to(self.device)
       std = 0.01
       noise = torch.randn(batch.size()) * std + 0
-      #batch = batch + noise.to(self.device)
+      batch = batch + noise.to(self.device)
       out = self.model(batch)
       #print("\n\n")
       #a = torch.argsort(out[0],dim=-1,descending=True)
@@ -152,15 +152,16 @@ class AttentionTrainer(ReRankingTrainer):
 
 
 def load_cross_data(root,model_name,seq_train,seq_test):
-  train_data = RankingMSE(root,model_name,seq_train)
+  train_data = RankingNewRetreivalDataset(root,model_name,seq_train)
   trainloader = DataLoader(train_data,batch_size = len(train_data),shuffle=True)
   # LOAD TEST DATA
-  test_data = RankingMSE(root,model_name,seq_test)
+  test_data = RankingNewRetreivalDataset(root,model_name,seq_test)
   testloader = DataLoader(test_data,batch_size = len(test_data)) #
   return trainloader,testloader,test_data.get_max_top_cand()
 
+
 def load_data(root,model_name,seq,train_percentage):
-  train_data = RankingMSE(root,model_name,seq)
+  train_data = RankingNewRetreivalDataset(root,model_name,seq)
 
   train_size = int(len(train_data)*train_percentage)
   test_size = len(train_data) - train_size
@@ -179,29 +180,32 @@ train_size = 0.2
 device = 'cuda:0'
 #device = 'cpu'
 
+Models = ['VLAD_pointnet', 'ORCHNet_pointnet' ,'SPoC_pointnet', 'GeM_pointnet']
+Models = ['SPoC_pointnet','GeM_pointnet']
 sequences = ['00','02','05','06','08']
-sequences = ['00']
-for j in range(1):
+#sequences = ['00']
+for j in range(5):
   # 'SPoC_pointnet', 'GeM_pointnet' ,
   #train_size = float(j)/10
-  for model_name in ['VLAD_pointnet', 'ORCHNet_pointnet']:
+  for model_name in Models:
     for seq in sequences:
       #seq = '02'
       trainloader,testloader,max_top_cand = load_data(root,model_name,seq,train_size)
       #trainloader,testloader,max_top_cand  = load_cross_data(root,model_name,seq,seq)
 
       #===== RE-RANKING ========
-      model = MaskRanking(max_top_cand,256)
+      model = AttentionRanking(max_top_cand,256)
       loss_fun = MSERanking()
 
       trainloader,testloader,max_top_cand = load_data(root,model_name,seq,train_size)
-      root_save = os.path.join('tests','loss_softmax',str(train_size),model_name,seq)
+      #root_save = os.path.join('tests','loss_softmax',str(train_size),model_name,seq)
+      root_save = os.path.join('results',model_name,seq)
       if not os.path.isdir(root_save):
         os.makedirs(root_save)
 
       # experiment = os.path.join(root_save,f'{str(model)}-{str(train_size)}')
       experiment = os.path.join(root_save,f'{str(model)}')
-      rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model,lr= 0.01,epochs = 1000,lr_step=900,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
+      rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model,lr= 0.01,epochs = 500,lr_step=900,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
 
       rerank.Train(trainloader,testloader)
 
