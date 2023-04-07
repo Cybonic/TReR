@@ -60,7 +60,8 @@ class RankingDataset():
    
     #poses = ground_truth['poses']
 
-    pose_dist = torch.load(self.pose_dist_file)['ed']
+    pose_dist = torch.load(self.pose_dist_file)
+    pose_dist = pose_dist['new']['ed']
     #feat_dist = torch.load(self.feat_dist_file)
 
     return{'d':data,'pl':pred_loops,'ps':pred_scores,'t':targets,'q':queries,'ts':pose_dist}
@@ -88,6 +89,9 @@ class RankingMSE(RankingDataset):
   def __init__(self,root,model_name,sequence):
     super().__init__(root,model_name,sequence)
     pass
+
+  def __str__(self):
+    return "RankingMSE"
 
   def __getitem__(self,idx):
     target = np.argsort(self.base_target_relevance[idx])
@@ -123,13 +127,13 @@ class RankingNewRetreivalDataset():
 
     self.targets = data['t']
     target_relevance = data['p']['old']['ed']
-    descriptors = data['d']
+    self.descriptors = data['d']
     queries = data['q']
 
     self.base_loops,self.base_relevance= comp_loops(data['f']['ed'], data['q'],window=500,max_top_cand=self.max_top_cand )
     
-    self.base_descriptors = np.array([descriptors[l] for l in self.base_loops])
-    self.base_query_descriptors = descriptors[queries]
+    self.base_descriptors = np.array([self.descriptors[l] for l in self.base_loops])
+    self.base_query_descriptors = self.descriptors[queries]
     self.base_target_relevance = np.array([d[l] for d,l in zip(target_relevance,self.base_loops)])
 
     #target_ord = np.array([l[np.argsort(d[l])] for d,l in zip(pose,self.targets)])
@@ -142,6 +146,14 @@ class RankingNewRetreivalDataset():
   
   def get_targets(self):
     return self.targets
+  
+  def get_descriptors(self):
+    return self.descriptors
+  def get_pose(self):
+    return self.poses
+  
+  def __str__(self):
+    return "RankingNewRetreivalDataset"
 
   def load_data(self):
     trining_data = torch.load(self.file2load)
@@ -151,7 +163,7 @@ class RankingNewRetreivalDataset():
     ground_truth = torch.load(self.ground_truth_file)
     queries = ground_truth['anchors']
     targets = ground_truth['targets']
-    poses = ground_truth['poses']
+    self.poses = ground_truth['poses']
 
     pose_dist = torch.load(self.pose_dist_file)
     feat_dist = torch.load(self.feat_dist_file)
@@ -159,7 +171,8 @@ class RankingNewRetreivalDataset():
     return{'d':data,'f':feat_dist,'p':pose_dist,'t':targets,'q':queries}
 
   def __getitem__(self,idx):
-    target = np.argsort(self.base_target_relevance[idx])
+    target = self.base_target_relevance[idx]
+    target = np.argsort(target)
 
     queries = self.base_query_descriptors[idx]
     queries = torch.from_numpy(queries).unsqueeze(dim=0).float()

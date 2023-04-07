@@ -5,3 +5,5 @@ results/*
 data/*
 *.csv
 *.pth
+fig/*
+results/*
