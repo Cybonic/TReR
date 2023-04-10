@@ -18,6 +18,8 @@ import loss
 from base_trainer import ReRankingTrainer
 
 
+
+
 class AttentionRanking(torch.nn.Module):
     def __init__(self,cand=35,feat_size = 256):
         super().__init__()
@@ -30,7 +32,7 @@ class AttentionRanking(torch.nn.Module):
 
         self.att = torch.nn.MultiheadAttention(256,2)
         self.classifier = torch.nn.Conv1d(256, 1, 1)
-
+        self.fc = nn.Linear(cand,cand)
     def __str__(self):
       return "AttentionRanking"
     
@@ -38,21 +40,53 @@ class AttentionRanking(torch.nn.Module):
         out, attn_output_weights = self.att(k,k,k)
         out = torch.transpose(out,dim0=2,dim1=1)
         out = self.classifier(out).squeeze()
+        #out,idx  = torch.max(out,dim=-1)
+        out = self.fc(out)
         if self.training:
            return out.float()
         return out.float()
+
+       
+
+class MHAERanking(torch.nn.Module):
+    def __init__(self,cand=35,feat_size = 256):
+      super().__init__()
+        
+
+      h = cand
+      self.att = torch.nn.MultiheadAttention(cand,1)
+      self.ln =  nn.LayerNorm(cand)
+      fc = [nn.LazyLinear(h,1),
+             nn.ReLU(),
+             nn.LazyLinear(cand,1),
+             nn.LayerNorm(cand),
+             ]
+      
+      self.mlp = nn.Sequential(*fc)
+      
+
+    def __str__(self):
+      return "MaskRanking"
+    
+    def forward(self,x):
+    
+      k,map,a = self.att(x,x,x)
+      z = self.ln(k + x)
+      z = self.mlp(z)
+      return z.float()
+    
 
 class MaskRanking(torch.nn.Module):
     def __init__(self,cand=35,feat_size = 256):
       super().__init__()
         
-      self.Win =  nn.Parameter(torch.zeros(10,256,cand))
+      self.Win =  nn.Parameter(torch.zeros(cand,cand))
       self.Wout =  nn.Parameter(torch.zeros(cand,1))
         
       nn.init.normal_(self.Win.data, mean=0, std=0.5)
       nn.init.normal_(self.Wout.data, mean=0, std=0.5)
 
-      self.att = torch.nn.MultiheadAttention(256,2)
+      self.att = torch.nn.MultiheadAttention(256,1)
       self.classifier = torch.nn.Conv1d(256, 1, 1)
       self.att2 = torch.nn.MultiheadAttention(cand,1)
 
@@ -61,13 +95,13 @@ class MaskRanking(torch.nn.Module):
              #nn.LazyLinear(cand),
              nn.ReLU()
              ]
-      
-      for i in range(2):
-        fc += fc
-   
-      
-    
-      self.fc = nn.Sequential(*fc)
+      self.classifier = torch.nn.Conv1d(256, 1, 1)
+      layer = [MHAERanking(cand)]
+      for i in range(6):
+        layer += layer
+
+      self.fc = nn.Linear(cand,cand)
+      self.layer = nn.Sequential(*layer)
       
 
     def __str__(self):
@@ -81,14 +115,17 @@ class MaskRanking(torch.nn.Module):
       #ou_stack = torch.stack(out,dim=1)
       #out,std_out = torch.max(ou_stack,dim=1)
       
-      k,map = self.att(k,k,k)
+      #k,map = self.att(k,k,k)
+      out = torch.transpose(k,dim0=2,dim1=1)
+      out = self.classifier(out).squeeze()
       #out,idx  = torch.max(k,dim=-1)
-      #
+      
+      out = self.layer(out)
       #out = out  + k
-      #out = torch.transpose(k,dim0=2,dim1=1)
+      #
       #out = torch.matmul(out,self.Wout).squeeze()
        
-      out = self.classifier(out).squeeze()
+      
       out = self.fc(out)
       #out,_= self.att2(out,out,out)
       #out = out + out 
@@ -99,15 +136,40 @@ class MaskRanking(torch.nn.Module):
     
 
 # =====================================================
+class rankloss():
+  def __init__(self):
+        self.loss_fn = torch.nn.MarginRankingLoss()
+  def __call__(self,pred,table):
+        
+      pred = torch.softmax(pred,dim=-1) 
+      b = torch.tensor(table.shape[0])
+      n = table.shape[1]
+      loss_vec = 0
+      for p,batch in zip(pred,table):
+        loss_value = 0  
+        for i in range(n):
+          for j in range(n):
+            #if batch[i,j]:
+            label = batch[i,j]
+            r1 = p[i]
+            r2 = p[j]
+            loss_value = loss_value + self.loss_fn(r1,r2,label)
+            #loss_value = loss_value  +  (-1* (p[i]-p[j])).clip(min=0)
+              #loss_value = loss_value + torch.log2(1+torch.exp(-(p[i]-p[j])))
+        loss_vec +=loss_value
 
+      loss_ = loss_vec/b.float()
+      return loss_
 
 class MSERanking():
     def __init__(self):
         self.bce = nn.MSELoss()
     def __call__(self,x,y):
         # x = torch.round(x,decimals=0)
-        x = F.softmax(x,dim=-1)
-        y = F.softmax(y,dim=-1)
+        x = F.softmax(x)
+        #y = F.softmax(y)
+
+        #error = -torch.matmul(y,x.transpose())
         error = self.bce(x,y)
         return error.float()
       
@@ -163,11 +225,11 @@ class AttentionTrainer(ReRankingTrainer):
 
 def load_cross_data(root,model_name,seq_train,seq_test):
   train_data = RankingNewRetreivalDataset(root,model_name,seq_train)
-  train_data = RankingMSE(root,model_name,seq_train)
+  #train_data = RankingMSE(root,model_name,seq_train)
   trainloader = DataLoader(train_data,batch_size = len(train_data),shuffle=True)
   # LOAD TEST DATA
   test_data = RankingNewRetreivalDataset(root,model_name,seq_test)
-  test_data = RankingMSE(root,model_name,seq_test)
+  #test_data = RankingMSE(root,model_name,seq_test)
   testloader = DataLoader(test_data,batch_size = len(test_data)) #
   return trainloader,testloader,test_data.get_max_top_cand()
 
@@ -191,7 +253,7 @@ def load_data(root,model_name,seq,train_percentage,dataset='new',batch_size=50):
 
 root = '/home/tiago/Dropbox/RAS-publication/predictions/paper/kitti/place_recognition'
 
-train_size = 0.2
+train_size = 0.5
 device = 'cuda:0'
 #device = 'cpu'
 
@@ -212,10 +274,11 @@ for j in range(10):
       #===== RE-RANKING ========
       model = AttentionRanking(max_top_cand,256)
       #model = MaskRanking(max_top_cand,256)
-      loss_fun = MSERanking()
+      loss_fun = rankloss()
+      #loss_fun = MSERanking()
 
       #root_save = os.path.join('tests','loss_softmax',str(train_size),model_name,seq)
-      root_save = os.path.join('results','new_implementation',str(train_size),model_name,datasetname,seq)
+      root_save = os.path.join('results',"new_implementation",str(train_size),model_name,datasetname,seq)
       if not os.path.isdir(root_save):
         os.makedirs(root_save)
 

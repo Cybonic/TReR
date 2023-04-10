@@ -111,7 +111,16 @@ class RankingMSE(RankingDataset):
     return keys,target
 
 
-
+def compt_y_table(y):
+  n = y.shape[1]
+  batch_size = y.shape[0]
+  table = np.ones((batch_size,n,n))*-1
+  for z,(b) in enumerate(y):
+    for i in range(n):
+      for j in range(n):
+        if b[i]>b[j]:
+          table[z,i,j] = 1
+  return table
 
 
 
@@ -135,6 +144,8 @@ class RankingNewRetreivalDataset():
     self.base_descriptors = np.array([self.descriptors[l] for l in self.base_loops])
     self.base_query_descriptors = self.descriptors[queries]
     self.base_target_relevance = np.array([d[l] for d,l in zip(target_relevance,self.base_loops)])
+
+    self.table = compt_y_table(self.base_target_relevance)
 
     #target_ord = np.array([l[np.argsort(d[l])] for d,l in zip(pose,self.targets)])
 
@@ -173,6 +184,8 @@ class RankingNewRetreivalDataset():
   def __getitem__(self,idx):
     target = self.base_target_relevance[idx]
     target = np.argsort(target)
+
+    target = self.table[idx]
 
     queries = self.base_query_descriptors[idx]
     queries = torch.from_numpy(queries).unsqueeze(dim=0).float()

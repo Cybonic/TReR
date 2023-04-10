@@ -18,6 +18,13 @@ def compt_y_table(v):
 				table[i,j] = 1
 	return table
 
+def list_loss(p,table):
+	loss = 0
+	for i in range(n):
+		for j in range(n):
+			if table[i,j]:
+				loss = loss + torch.log2(1+torch.exp(-(p[i]-p[j])))
+	return loss
 
 y = torch.tensor([0.5,0.4,0.3])
 py = F.softmax(y).unsqueeze(0)
@@ -35,10 +42,6 @@ table = compt_y_table(y)
 
 print(table)
 n = y.shape[0]
-loss = 0
-for i in range(n):
-	for j in range(n):
-		if table[i,j]:
-			loss = loss + torch.log2(1+torch.exp(-(p[i]-p[j])))
+
 
 print(loss)

@@ -29,7 +29,7 @@ class ReRankingTrainer(nn.Module):
     self.lr_step = lr_step
     self.model = model.to(device)
     self.loss  = loss
-    self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr)
+    self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
     if max_top_cand < 25:
       max_top_cand = 25
     self.top_cand = list(range(1,max_top_cand+1))
