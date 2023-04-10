@@ -74,23 +74,23 @@ class MaskRanking(torch.nn.Module):
       return "MaskRanking"
     
     def forward(self,k):
-      out = []
-      for w in  self.Win:
-        out.append(torch.matmul(k,w))
+      #out = []
+      #for w in  self.Win:
+      #  out.append(torch.matmul(k,w))
       #out = k
       #ou_stack = torch.stack(out,dim=1)
       #out,std_out = torch.max(ou_stack,dim=1)
       
       k,map = self.att(k,k,k)
-      out,idx  = torch.max(k,dim=-1)
+      #out,idx  = torch.max(k,dim=-1)
       #
       #out = out  + k
       #out = torch.transpose(k,dim0=2,dim1=1)
       #out = torch.matmul(out,self.Wout).squeeze()
        
-      #out = self.classifier(out).squeeze()
+      out = self.classifier(out).squeeze()
       out = self.fc(out)
-      out,_= self.att2(out,out,out)
+      #out,_= self.att2(out,out,out)
       #out = out + out 
 
       if self.training:
@@ -196,9 +196,9 @@ device = 'cuda:0'
 #device = 'cpu'
 
 Models = ['VLAD_pointnet', 'ORCHNet_pointnet' ,'SPoC_pointnet', 'GeM_pointnet']
-#Models = ['VLAD_pointnet']
-sequences = ['00','02','05','06','08']
-#sequences = ['00']
+Models = ['VLAD_pointnet']
+#sequences = ['00','02','05','06','08']
+sequences = ['00']
 dataset_type = 'new'
 for j in range(10):
   # 'SPoC_pointnet', 'GeM_pointnet' ,
@@ -210,12 +210,12 @@ for j in range(10):
       #trainloader,testloader,max_top_cand  = load_cross_data(root,model_name,seq,seq)
 
       #===== RE-RANKING ========
-      #model = AttentionRanking(max_top_cand,256)
-      model = MaskRanking(max_top_cand,256)
+      model = AttentionRanking(max_top_cand,256)
+      #model = MaskRanking(max_top_cand,256)
       loss_fun = MSERanking()
 
       #root_save = os.path.join('tests','loss_softmax',str(train_size),model_name,seq)
-      root_save = os.path.join('results_paper_with_att_2x_fc_no_max',str(train_size),model_name,datasetname,seq)
+      root_save = os.path.join('results','new_implementation',str(train_size),model_name,datasetname,seq)
       if not os.path.isdir(root_save):
         os.makedirs(root_save)
 
