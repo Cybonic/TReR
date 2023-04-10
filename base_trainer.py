@@ -43,8 +43,14 @@ class ReRankingTrainer(nn.Module):
     try:
       base_loop,base_sim =  trainloader.dataset.dataset.get_base_loops()
       targets =trainloader.dataset.dataset.get_targets()
+
+      # Test
+      test_indices = np.array(testloader.dataset.indices)
       test_base_loop,test_base_sim =  testloader.dataset.dataset.get_base_loops()
-      test_targets = testloader.dataset.dataset.get_targets()  
+      test_base_loop = test_base_loop[test_indices]
+      test_targets = np.array(testloader.dataset.dataset.get_targets())
+      test_targets = test_targets[test_indices]
+      
     except:
       base_loop,base_sim =  trainloader.dataset.get_base_loops()
       targets =trainloader.dataset.get_targets()
