@@ -118,7 +118,7 @@ def compt_y_table(y):
   for z,(b) in enumerate(y):
     for i in range(n):
       for j in range(n):
-        if b[i]>b[j]:
+        if b[i]<b[j]: #
           table[z,i,j] = 1
   return table
 

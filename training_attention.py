@@ -153,9 +153,10 @@ class rankloss():
             label = batch[i,j]
             r1 = p[i]
             r2 = p[j]
-            loss_value = loss_value + self.loss_fn(r1,r2,label)
-            #loss_value = loss_value  +  (-1* (p[i]-p[j])).clip(min=0)
-              #loss_value = loss_value + torch.log2(1+torch.exp(-(p[i]-p[j])))
+            #loss_value = loss_value + self.loss_fn(r1,r2,label)
+            loss_value = loss_value  +  (-label*(p[i]-p[j]+0.1)).clip(min=0)
+            #if label:
+            #  loss_value = loss_value + torch.log2(1+torch.exp(-(p[i]-p[j])))
         loss_vec +=loss_value
 
       loss_ = loss_vec/b.float()
@@ -254,8 +255,8 @@ def load_data(root,model_name,seq,train_percentage,dataset='new',batch_size=50):
 root = '/home/tiago/Dropbox/RAS-publication/predictions/paper/kitti/place_recognition'
 
 train_size = 0.5
-device = 'cuda:0'
-#device = 'cpu'
+#device = 'cuda:0'
+device = 'cpu'
 
 Models = ['VLAD_pointnet', 'ORCHNet_pointnet' ,'SPoC_pointnet', 'GeM_pointnet']
 Models = ['VLAD_pointnet']
