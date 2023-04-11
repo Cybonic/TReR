@@ -152,6 +152,9 @@ class RankingNewRetreivalDataset():
   def __len__(self):
     return len(self.targets) 
   
+  def get_gt_relevance(self):
+    return self.base_target_relevance
+  
   def get_base_loops(self):
     return self.base_loops,self.base_relevance
   
@@ -183,8 +186,9 @@ class RankingNewRetreivalDataset():
 
   def __getitem__(self,idx):
     target = self.base_target_relevance[idx]
-    target = np.argsort(target)
+    target_idx = np.argsort(target)
 
+    #
     target = self.table[idx]
 
     queries = self.base_query_descriptors[idx]
@@ -195,7 +199,7 @@ class RankingNewRetreivalDataset():
     target = torch.from_numpy(target).float()
     
     #target = self.norm(target)
-    return keys,target
+    return keys,target,target_idx
   
   def get_max_top_cand(self):
     return self.max_top_cand 

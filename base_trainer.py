@@ -29,7 +29,7 @@ class ReRankingTrainer(nn.Module):
     self.lr_step = lr_step
     self.model = model.to(device)
     self.loss  = loss
-    self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
+    self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
     if max_top_cand < 25:
       max_top_cand = 25
     self.top_cand = list(range(1,max_top_cand+1))
@@ -39,10 +39,13 @@ class ReRankingTrainer(nn.Module):
   def Train(self,trainloader,testloader):
     old_perfm  = 0
     loss_log   = []
-
+    top_mnt = 5
     try:
-      base_loop,base_sim =  trainloader.dataset.dataset.get_base_loops()
-      targets =trainloader.dataset.dataset.get_targets()
+      btain_base_loop,base_sim =  trainloader.dataset.dataset.get_base_loops()
+      train_targets = np.array(trainloader.dataset.dataset.get_targets())
+      train_idx =  np.array(trainloader.dataset.indices)
+      self.train_targets = train_targets[train_idx]
+      train_base_loop = btain_base_loop[train_idx]
 
       # Test
       test_indices = np.array(testloader.dataset.indices)
@@ -50,6 +53,9 @@ class ReRankingTrainer(nn.Module):
       test_base_loop = test_base_loop[test_indices]
       test_targets = np.array(testloader.dataset.dataset.get_targets())
       test_targets = test_targets[test_indices]
+
+      test_relevance = testloader.dataset.dataset.get_gt_relevance()
+      self.test_relevance = test_relevance[test_indices]
       
     except:
       base_loop,base_sim =  trainloader.dataset.get_base_loops()
@@ -58,8 +64,11 @@ class ReRankingTrainer(nn.Module):
       test_targets = testloader.dataset.get_targets() 
 
     # TRAIN PERFORMANCE
-    base_perfm = retrieve_eval(base_loop,targets,top=2)
+    base_perfm = retrieve_eval(train_base_loop,self.train_targets,top=25)
 
+    print("\n========\n")
+    print(base_perfm)
+    print("\n========\n")
     # TEST PERFORMANCE
     test_perf_record = {}
     for i in self.top_cand:
@@ -71,7 +80,10 @@ class ReRankingTrainer(nn.Module):
     best_perf_record = []
     for epoch in range(self.epochs):
       
-      loss  = self.train_epoch(epoch,trainloader)
+      loss,re_rank_idx  = self.train_epoch(epoch,trainloader)
+      rerank_loops = np.array([loops[l] for loops,l in zip(train_base_loop,re_rank_idx)])
+      train_rerank_perfm  = retrieve_eval(rerank_loops,self.train_targets ,top=top_mnt)
+
       value = np.round(np.mean(loss),3)
       loss_log.append(value)
 
@@ -79,15 +91,16 @@ class ReRankingTrainer(nn.Module):
         self.optimizer.param_groups[0]['lr'] = self.optimizer.param_groups[0]['lr']/10
   
       if epoch%self.tain_report_terminal == 0:
-        print('T ({}) | Loss {:.10f}'.format(epoch,np.mean(loss_log)))
+        print('T ({}) | Loss {:.10f} Recall {:.3}'.format(epoch,np.mean(loss_log),train_rerank_perfm['recall']))
 
       # Val 
       if epoch % self.val_report == 0:
         
-        rerank_loops = self.predict(testloader,test_base_loop)
-        rerank_perfm = retrieve_eval(rerank_loops,targets,top=1)
+        re_rank_idx = self.predict(testloader)
+        rerank_loops = np.array([loops[l] for loops,l in zip(test_base_loop,re_rank_idx)])
+        rerank_perfm = retrieve_eval(rerank_loops,test_targets,top=top_mnt)
        
-        delta = rerank_perfm['recall'] - test_perf_record[1]['recall']
+        delta = rerank_perfm['recall'] - test_perf_record[top_mnt]['recall']
         print(f"\nReRank Recall: {round(rerank_perfm['recall'],5)} | delta: {round(delta,5)} ")
 
         if rerank_perfm['recall']>old_perfm:
@@ -95,17 +108,18 @@ class ReRankingTrainer(nn.Module):
           perf_record = {}
 
           for i in self.top_cand:
-            perf_record[i] = retrieve_eval(rerank_loops,targets,top=i)
+            perf_record[i] = retrieve_eval(rerank_loops,test_targets,top=i)
 
           best_perf_record = perf_record
           
           print("\nBest performance\n")
+          self.save_checkpoint(epoch,best_perf_record,self.experiment)
           #save_log = [ed_sim,ed_loop,rerank_loops,scores,target_ord]
     
-    self.save_checkpoint(epoch,best_perf_record,self.experiment)
+    
     self.save_results_csv(self.experiment,best_perf_record,test_perf_record)
     print("\n ******************Best*********************\n")
-    print(f"BaseLine  {test_perf_record[1]['recall']}")
+    print(f"BaseLine  {test_perf_record[top_mnt]['recall']}")
     print(f"Reranking {old_perfm}")
 
 
