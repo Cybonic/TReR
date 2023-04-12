@@ -17,33 +17,91 @@ import loss
 
 from base_trainer import ReRankingTrainer
 
+class CNN(nn.Module):
+    def __init__(self, d_model, hidden_dim, p):
+        super().__init__()
+        self.k1convL1 = nn.Linear(d_model,    hidden_dim)
+        self.k1convL2 = nn.Linear(hidden_dim, d_model)
+        self.activation = nn.ReLU()
 
+    def forward(self, x):
+        x = self.k1convL1(x)
+        x = self.activation(x)
+        x = self.k1convL2(x)
+        return x
 
+class EncoderLayer(nn.Module):
+    def __init__(self, d_model, num_heads, conv_hidden_dim, p=0.1):
+        super().__init__()
+
+        self.mha = torch.nn.MultiheadAttention(d_model, num_heads,p)
+        self.cnn = CNN(d_model, conv_hidden_dim, p)
+
+        self.layernorm1 = nn.LayerNorm(normalized_shape=d_model, eps=1e-6)
+        self.layernorm2 = nn.LayerNorm(normalized_shape=d_model, eps=1e-6)
+    
+    def forward(self, x):
+        
+        # Multi-head attention 
+        attn_output, _ = self.mha(x, x, x)  # (batch_size, input_seq_len, d_model)
+        
+        # Layer norm after adding the residual connection 
+        out1 = self.layernorm1(x + attn_output)  # (batch_size, input_seq_len, d_model)
+        
+        # Feed forward 
+        cnn_output = self.cnn(out1)  # (batch_size, input_seq_len, d_model)
+        
+        #Second layer norm after adding residual connection 
+        out2 = self.layernorm2(out1 + cnn_output)  # (batch_size, input_seq_len, d_model)
+
+        return out2
 
 class AttentionRanking(torch.nn.Module):
     def __init__(self,cand=35,feat_size = 256):
         super().__init__()
         
         self.Win =  nn.Parameter(torch.zeros(256,cand))
-        self.Wout =  nn.Parameter(torch.zeros(cand,1))
+        self.Wout =  nn.Parameter(torch.zeros(256,1))
         
         nn.init.normal_(self.Win.data, mean=0, std=0.1)
         nn.init.normal_(self.Wout.data, mean=0, std=0.1)
 
-        self.att = torch.nn.MultiheadAttention(256,2)
+        self.att = torch.nn.MultiheadAttention(cand,1)
         self.classifier = torch.nn.Conv1d(256, 1, 1)
         self.fc = nn.Linear(cand,cand)
+        
+        fc_drop = [nn.LazyLinear(cand),
+             nn.ReLU(),
+             nn.Dropout(0.1)
+             ]
+      
+        self.fc_drop = nn.Sequential(*fc_drop)
+        layer = [EncoderLayer(256,1,cand)]
+        self.enc_n = 4
+        for i in range(self.enc_n):
+          layer += layer
+        self.layer = nn.Sequential(*layer)
+
     def __str__(self):
-      return "AttentionRanking"
+      return f"AttentionRanking_{self.enc_n}xEncoder_Wout"
     
     def forward(self,k):
-        out, attn_output_weights = self.att(k,k,k)
+        #k = torch.transpose(k,dim0=2,dim1=1)
+        #out, attn_output_weights = self.att(k,k,k)
+        #out = k + out
         #out = torch.transpose(out,dim0=2,dim1=1)
         #out = self.classifier(out).squeeze()
-        out,idx  = torch.max(out,dim=-1)
-        out = self.fc(out)
-        if self.training:
-           return out.float()
+        #
+        #out = k
+        #
+        #out = self.fc_drop(out)
+        #k = torch.transpose(k,dim0=2,dim1=1)
+        out = self.layer(k)
+        
+        out = torch.matmul(out,self.Wout).squeeze()
+        #out,idx  = torch.max(out,dim=-1)
+        #if self.training:
+        #   return out.float()
         return out.float()
 
        
@@ -54,22 +112,28 @@ class MHAERanking(torch.nn.Module):
         
 
       h = cand
-      self.atta = torch.nn.MultiheadAttention(feat_size,2)
+      self.atta = torch.nn.MultiheadAttention(cand,1)
       
-      self.ln =  nn.LayerNorm(cand)
-      fc = [nn.LazyLinear(h,1),
+      self.ln1 =  nn.LayerNorm(256)
+      self.ln2 =  nn.LayerNorm(256)
+      
+      fc = [nn.LazyLinear(h),
              nn.ReLU(),
-             nn.LazyLinear(cand,1),
-             nn.LayerNorm(cand),
+             nn.LazyLinear(cand)
              ]
       
-      fc_drop = [nn.LazyLinear(h,1),
+      fc_drop = [nn.LazyLinear(h),
              nn.ReLU(),
              nn.Dropout(0.1)
              ]
       
-      self.mlp = nn.Sequential(*fc_drop)
-      self.drop = nn.Dropout(0.1)
+      
+      
+      
+      
+      self.mlp = nn.Sequential(*fc)
+      self.drop1 = nn.Dropout(0.1)
+      self.drop2 = nn.Dropout(0.1)
 
     def __str__(self):
       return "MaskRanking"
@@ -77,8 +141,8 @@ class MHAERanking(torch.nn.Module):
     def forward(self,x):
       #a,(b,c) = self.att(x,x,x)
       x, attn_output_weights = self.atta(x,x,x)
-      z = self.ln(x + self.drop(x))
-      z =  self.ln(z+self.mlp(z))
+      z = self.ln1(x + self.drop1(x))
+      z =  self.ln2(z + self.drop2(self.mlp(z)))
       return z.float()
     
 
@@ -118,7 +182,7 @@ class MaskRanking(torch.nn.Module):
       #out = k
       #ou_stack = torch.stack(out,dim=1)
       #out,std_out = torch.max(ou_stack,dim=1)
-      
+      k = k.tranpose(dim0=2,dim1=1)
       ak,map= self.att(k,k,k)
       k = ak  + k
       out = self.drop(k)
@@ -160,10 +224,10 @@ class rankloss():
         x1 = p[self.permute[:,0]]
         x2 = p[self.permute[:,1]]
         y = batch[self.permute[:,0],self.permute[:,1]]
-        #value = self.loss_fn(x1,x2,y)
+        value = self.loss_fn(x1,x2,y)
         
 
-        value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0))
+        #value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0))
         
         loss_vec +=value
         
@@ -264,7 +328,7 @@ def load_data(root,model_name,seq,train_percentage,dataset='new',batch_size=50):
 
   train, test =torch.utils.data.random_split(train_data,[train_size,test_size])
   #trainloader = DataLoader(train,batch_size = int(len(train)),shuffle=True)
-  trainloader = DataLoader(train,batch_size = len(test),shuffle=False)
+  trainloader = DataLoader(train,batch_size = len(test),shuffle=True)
   testloader = DataLoader(test,batch_size = len(test)) #
 
   return trainloader,testloader,train_data.get_max_top_cand(),str(train_data)
@@ -282,9 +346,9 @@ sequences = ['00','02','05','06','08']
 #sequences = ['00']
 dataset_type = 'new'
 
-for j in range(1,10):
+for j in range(1,2):
   # 'SPoC_pointnet', 'GeM_pointnet' ,
-  train_size = float(j)/10
+  #train_size = float(j)/10
   for model_name in Models:
     for seq in sequences:
       torch.manual_seed(0)
@@ -301,13 +365,13 @@ for j in range(1,10):
       #loss_fun = MSERanking()
 
       #root_save = os.path.join('tests','loss_softmax',str(train_size),model_name,seq)
-      root_save = os.path.join('results',"prob_rank_loss","split",model_name,datasetname,seq,str(train_size))
+      root_save = os.path.join('results',"margin_rank_loss","ablation",model_name,datasetname,seq,str(train_size))
       if not os.path.isdir(root_save):
         os.makedirs(root_save)
 
       # experiment = os.path.join(root_save,f'{str(model)}-{str(train_size)}')
       experiment = os.path.join(root_save,f'{str(model)}')
-      rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model,lr= 0.001,epochs = 1000,lr_step=5000,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
+      rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model,lr= 0.001,epochs = 300,lr_step=5000,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
 
       rerank.Train(trainloader,testloader)
 

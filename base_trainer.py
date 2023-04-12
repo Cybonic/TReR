@@ -113,24 +113,24 @@ class ReRankingTrainer(nn.Module):
           best_perf_record = perf_record
           
           print("\nBest performance\n")
-          self.save_checkpoint(epoch,best_perf_record,self.experiment)
+          #self.save_checkpoint(epoch,best_perf_record,self.experiment,top_mnt)
           #save_log = [ed_sim,ed_loop,rerank_loops,scores,target_ord]
     
     
-    self.save_results_csv(self.experiment,best_perf_record,test_perf_record)
+    self.save_results_csv(self.experiment,best_perf_record,test_perf_record,top_mnt)
     print("\n ******************Best*********************\n")
     print(f"BaseLine  {test_perf_record[top_mnt]['recall']}")
     print(f"Reranking {old_perfm}")
 
 
-  def save_checkpoint(self, epoch, best_log, filename):
+  def save_checkpoint(self, epoch, best_log, filename,top_mnt):
     state = {
         'arch':str(self.model),
         'epoch': epoch,
         'state_dict': self.model.state_dict(),
         'monitor_best': best_log,
     }
-    best = round(best_log[1]['recall'],2)
+    best = round(best_log[top_mnt]['recall'],2)
     checkpoint_dir = ''
     filename = os.path.join(checkpoint_dir, f'{filename}-{best}.pth')
     torch.save(state, filename)
@@ -138,7 +138,7 @@ class ReRankingTrainer(nn.Module):
 
 
 
-  def save_results_csv(self,file,results,base_results):
+  def save_results_csv(self,file,results,base_results,top):
     import pandas as pd
     
     # Check if the results were generated
@@ -154,7 +154,9 @@ class ReRankingTrainer(nn.Module):
     for b,r in zip(base_values,rerank_values):
       array.append([b['recall'],r['recall']])
 
-    best = round(array[0][1],2)
+    array = np.array(array).round(decimals=2)
+    best = array[top-1,1]
+    #colum = ['top','base-recall','base-precision','reranked-recall','reranked-precision']
     colum = ['top','base','reranked']
     rows = np.concatenate((top_cand,array),axis=1)
     df = pd.DataFrame(rows,columns = colum)
