@@ -77,28 +77,30 @@ class AttentionRanking(torch.nn.Module):
       
         self.fc_drop = nn.Sequential(*fc_drop)
         layer = [EncoderLayer(256,1,cand)]
-        self.enc_n = 4
+        self.enc_n = 1
         for i in range(self.enc_n):
           layer += layer
         self.layer = nn.Sequential(*layer)
 
     def __str__(self):
-      return f"AttentionRanking_{self.enc_n}xEncoder_Wout"
+      return f"AttentionRanking_{self.enc_n}xEncoder_cnn"
     
     def forward(self,k):
         #k = torch.transpose(k,dim0=2,dim1=1)
         #out, attn_output_weights = self.att(k,k,k)
         #out = k + out
         #out = torch.transpose(out,dim0=2,dim1=1)
-        #out = self.classifier(out).squeeze()
+        #
         #
         #out = k
         #
-        #out = self.fc_drop(out)
-        #k = torch.transpose(k,dim0=2,dim1=1)
+       
         out = self.layer(k)
-        
-        out = torch.matmul(out,self.Wout).squeeze()
+        #out = self.fc_drop(out)
+        out = torch.transpose(out,dim0=2,dim1=1)
+        out = self.classifier(out).squeeze()
+        #  
+        #out = torch.matmul(out,self.Wout).squeeze()
         #out,idx  = torch.max(out,dim=-1)
         #if self.training:
         #   return out.float()
@@ -131,7 +133,7 @@ class MHAERanking(torch.nn.Module):
       
       
       
-      self.mlp = nn.Sequential(*fc)
+      self.mlp = nn.Sequential(*fc_drop)
       self.drop1 = nn.Dropout(0.1)
       self.drop2 = nn.Dropout(0.1)
 
@@ -141,8 +143,8 @@ class MHAERanking(torch.nn.Module):
     def forward(self,x):
       #a,(b,c) = self.att(x,x,x)
       x, attn_output_weights = self.atta(x,x,x)
-      z = self.ln1(x + self.drop1(x))
-      z =  self.ln2(z + self.drop2(self.mlp(z)))
+      #z = self.ln1(x + self.drop1(x))
+      #z =  self.ln2(z + self.drop2(self.mlp(z)))
       return z.float()
     
 
@@ -224,10 +226,10 @@ class rankloss():
         x1 = p[self.permute[:,0]]
         x2 = p[self.permute[:,1]]
         y = batch[self.permute[:,0],self.permute[:,1]]
-        value = self.loss_fn(x1,x2,y)
+        #value = self.loss_fn(x1,x2,y)
         
 
-        #value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0))
+        value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0))
         
         loss_vec +=value
         
@@ -346,13 +348,13 @@ sequences = ['00','02','05','06','08']
 #sequences = ['00']
 dataset_type = 'new'
 
-for j in range(1,2):
+for j in range(1,10):
   # 'SPoC_pointnet', 'GeM_pointnet' ,
   #train_size = float(j)/10
   for model_name in Models:
     for seq in sequences:
-      torch.manual_seed(0)
-      np.random.seed(0)
+      #torch.manual_seed(0)
+      #np.random.seed(0)
       #seq = '02'
       trainloader,testloader,max_top_cand,datasetname = load_data(root,model_name,seq,train_size,dataset_type,batch_size=100)
       #trainloader,testloader,max_top_cand  = load_cross_data(root,model_name,seq,seq)
@@ -365,13 +367,14 @@ for j in range(1,2):
       #loss_fun = MSERanking()
 
       #root_save = os.path.join('tests','loss_softmax',str(train_size),model_name,seq)
-      root_save = os.path.join('results',"margin_rank_loss","ablation",model_name,datasetname,seq,str(train_size))
+      # prob_rank_loss, margin_rank_loss
+      root_save = os.path.join('results',"prob_rank_loss","ablation",model_name,datasetname,seq,str(train_size))
       if not os.path.isdir(root_save):
         os.makedirs(root_save)
 
       # experiment = os.path.join(root_save,f'{str(model)}-{str(train_size)}')
       experiment = os.path.join(root_save,f'{str(model)}')
-      rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model,lr= 0.001,epochs = 300,lr_step=5000,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
+      rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model,lr= 0.001,epochs = 300,lr_step=150,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
 
       rerank.Train(trainloader,testloader)
 

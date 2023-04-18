@@ -39,9 +39,10 @@ def parse_file_struct(files,files_struct):
                     #print(path)
     return files_struct
 
-def search_for_best_model(files):
+def search_for_best_model(files,top_cand = None):
     best_model_dict = {}
-    idx = [1,5,10,15]
+    
+    #idx = [1,5,10,15]
     for key ,value  in files.items():
         seq_files =  parse_file_struct(value,files_struct)
         best_model = []
@@ -53,7 +54,11 @@ def search_for_best_model(files):
                 nam_v.append(file.split("/")[-1].split('-')[0])
                 df = pd.read_csv(file)
                 scores = df[['base','reranked']].values
-                rr_score = np.round(np.sum(scores[idx,0]-scores[idx,1]),2)
+                if top_cand != None :
+                    assert isinstance(top_cand,list),"Top cand is not a list format"
+                    scores = scores[top_cand,:]
+                #rr_score = np.round(np.sum(scores[idx,0]-scores[idx,1]),2)
+                rr_score = np.round(np.sum(scores[:,0]-scores[:,1]),2)
                 revall_seq.append(rr_score)
             
             scores_vec.extend(revall_seq)
@@ -61,27 +66,6 @@ def search_for_best_model(files):
             #print(f"{len(scores_vec)} == {len(best_model)}" )
 
         best_model_dict[key]={'model':best_model,'scores':scores_vec}
-    return best_model_dict
-
-def get_scores(files):
-    best_model_dict = {}
-    for key ,value  in files.items():
-        zero_files =  parse_file_struct(value,files_struct)
-        best_model = []
-        scores = []
-        for kk, vfile in zero_files.items():
-            nam_v = []
-            revall_seq = []
-            for file in vfile:
-                nam_v.append(file.split("/")[-1])
-                df = pd.read_csv(file)
-                recall = df[['reranked']].values[[1,5,10]]
-                revall_seq.append(recall.reshape(1,3))
-            revall_seq = np.concatenate(revall_seq)
-            mean_v = np.argmax(revall_seq,axis=0)
-            best_model.append(nam_v[max(mean_v,key=list(mean_v).count)])
-
-        best_model_dict[key]=best_model
     return best_model_dict
 
 
@@ -101,11 +85,12 @@ if __name__ == '__main__':
 
     model_struct = {'ORCHNet_pointnet':[],'VLAD_pointnet':[],'SPoC_pointnet':[],'GeM_pointnet':[]}
     files = parse_file_struct(files,model_struct)
-    best_model_dict = search_for_best_model(files)
-    print(best_model_dict)
+    best_model_dict = search_for_best_model(files,[1,5,10])
+    # print(best_model_dict)
     
     best_model_score = []
     best_model_model = []
+    
     for model,values in best_model_dict.items():
         m = values['model']
         s = values['scores']
