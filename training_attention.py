@@ -83,21 +83,22 @@ class AttentionRanking(torch.nn.Module):
         self.layer = nn.Sequential(*layer)
 
     def __str__(self):
-      return f"AttentionRanking_{self.enc_n}xEncoder_cnn"
+      #return f"AttentionRanking_{self.enc_n}xEncoder_cnn"
+      return f"AttentionRanking_CanAtt_cnn"
     
     def forward(self,k):
-        #k = torch.transpose(k,dim0=2,dim1=1)
-        #out, attn_output_weights = self.att(k,k,k)
-        #out = k + out
+        k = torch.transpose(k,dim0=2,dim1=1)
+        out, attn_output_weights = self.att(k,k,k)
+        out = k + out
         #out = torch.transpose(out,dim0=2,dim1=1)
         #
         #
         #out = k
         #
        
-        out = self.layer(k)
-        #out = self.fc_drop(out)
-        out = torch.transpose(out,dim0=2,dim1=1)
+        # out = self.layer(k)
+        # out = self.fc_drop(out)
+        # out = torch.transpose(out,dim0=2,dim1=1)
         out = self.classifier(out).squeeze()
         #  
         #out = torch.matmul(out,self.Wout).squeeze()
@@ -226,10 +227,10 @@ class rankloss():
         x1 = p[self.permute[:,0]]
         x2 = p[self.permute[:,1]]
         y = batch[self.permute[:,0],self.permute[:,1]]
-        #value = self.loss_fn(x1,x2,y)
+        value = self.loss_fn(x1,x2,y)
         
 
-        value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0))
+        #value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0))
         
         loss_vec +=value
         
