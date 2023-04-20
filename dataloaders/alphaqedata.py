@@ -10,6 +10,16 @@ from utils import comp_loops
 sequence_num = {'00':'02_05_06_08','02':'00_05_06_08','05':'00_02_06_08','06':'00_02_05_08','08':'00_02_05_06'}
 max_loop_cand = {'00':37,'02':44,'05':24,'06':24,'08':38}
 
+def compt_y_table(y):
+  n = y.shape[1]
+  batch_size = y.shape[0]
+  table = np.ones((batch_size,n,n))*-1
+  for z,(b) in enumerate(y):
+    for i in range(n):
+      for j in range(n):
+        if b[i]<b[j]: #
+          table[z,i,j] = 1
+  return table
 
 class AlphaQEData():
   def __init__(self,root,model,sequence):
@@ -32,6 +42,7 @@ class AlphaQEData():
     self.base_query_descriptors = self.descriptors[queries]
     self.base_target_relevance = np.array([d[l] for d,l in zip(target_relevance,self.base_loops)])
     self.base_map_pose =  np.array([self.poses[l] for l in self.base_loops])
+    self.table = compt_y_table(self.base_target_relevance)
 
   def __len__(self):
     return len(self.base_query_descriptors) 
@@ -75,6 +86,7 @@ class AlphaQEData():
   def __getitem__(self,idx):
     query_pos = self.query_pos[idx]
     map_pos = self.base_map_pose[idx]
+    target = self.table[idx]
 
     scores = self.base_target_relevance[idx]
     scores = torch.from_numpy(scores).float()
@@ -86,7 +98,7 @@ class AlphaQEData():
     map_emb = torch.from_numpy(map_emb).float()
 
     emb = {'q':query_emb,'map':map_emb}
-    pos = {'q':query_pos,'map':map_pos}
+    pos = {'q':query_pos,'map':map_pos,'table':target}
     #target = self.norm(target)
     return emb,scores,pos
   

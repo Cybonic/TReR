@@ -188,7 +188,6 @@ class RankingNewRetreivalDataset():
     target = self.base_target_relevance[idx]
     target_idx = np.argsort(target)
 
-    #
     target = self.table[idx]
 
     queries = self.base_query_descriptors[idx]

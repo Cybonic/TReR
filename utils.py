@@ -1,5 +1,11 @@
 
 import numpy as np
+import torch
+
+def comp_pair_permutations(n_samples):
+    combo_idx = torch.arange(n_samples)
+    permutation = torch.from_numpy(np.array([np.array([a, b]) for idx, a in enumerate(combo_idx) for b in combo_idx[idx + 1:]]))
+    return permutation[:,0],permutation[:,1]
 
 def comp_loops(sim_map,queries,window=500,max_top_cand=25):
   loop_cand = []
