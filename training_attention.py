@@ -7,15 +7,14 @@ import torch.nn.functional as F
 import os
 import numpy as np
 
-from utils import retrieve_eval
+from utils import retrieve_eval,comp_pair_permutations
 
 from torch.utils.data import DataLoader
 from dataloaders.rankingdata import RankingDataset,RankingMSE,RankingNewRetreivalDataset
-
-import RERANKING
-import loss 
+from dataloaders.alphaqedata import AlphaQEData
 
 from base_trainer import ReRankingTrainer
+from time import time
 
 class CNN(nn.Module):
     def __init__(self, d_model, hidden_dim, p):
@@ -210,73 +209,56 @@ class MaskRanking(torch.nn.Module):
     
 
 # =====================================================
-class rankloss():
+class logistic_loss:
+  def __init__(self,cand=37):
+    self.x1_perm,self.x2_perm = comp_pair_permutations(cand)
+  
+  def __call__(self,y_pred,y_true):
+    x1 = y_pred[:,self.x1_perm]
+    x2 = y_pred[:,self.x2_perm]
+    y = y_true[:,self.x1_perm,self.x2_perm]
+    value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0),dim=-1)
+    return torch.mean(value)
+
+  def __str__(self):
+     return 'logistic_loss'
+
+class margin_ranking_loss:
   def __init__(self,cand=37):
         self.loss_fn = torch.nn.MarginRankingLoss(0.1)
-        combo_idx = np.arange(cand)
-        self.permute = torch.from_numpy(np.array([np.array([a, b]) for idx, a in enumerate(combo_idx) for b in combo_idx[idx + 1:]]))
+        self.x1_perm,self.x2_perm = comp_pair_permutations(cand)
 
-  def __call__(self,pred,table):
-        
-      #pred = torch.softmax(pred,dim=-1) 
-      b = torch.tensor(table.shape[0])
-      n = table.shape[1]
-      loss_vec = 0
-      for p,batch in zip(pred,table):
-        loss_value = 0  
-        x1 = p[self.permute[:,0]]
-        x2 = p[self.permute[:,1]]
-        y = batch[self.permute[:,0],self.permute[:,1]]
-        value = self.loss_fn(x1,x2,y)
-        
+  def __call__(self,y_pred,y_true):
+    x1 = y_pred[:,self.x1_perm]
+    x2 = y_pred[:,self.x2_perm]
+    y  = y_true[:,self.x1_perm,self.x2_perm]
+    value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0),dim=-1)
+    return torch.mean(value)
 
-        #value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0))
-        
-        loss_vec +=value
-        
-      loss_ = loss_vec/b.float()
-      return loss_
+  def __str__(self):
+     return 'margin_ranking_loss'
 
-class MSERanking():
-    def __init__(self):
-        self.bce = nn.MSELoss()
-    def __call__(self,x,y):
-        # x = torch.round(x,decimals=0)
-        #x = F.softmax(x)
-        #y = F.softmax(y)
-
-        #error = -torch.matmul(y,x.transpose())
-        error = self.bce(x,y)
-        return error.float()
       
-  
 class AttentionTrainer(ReRankingTrainer):
   def __init__(self,**args):
     super(AttentionTrainer,self).__init__(**args)
-    
+    self.max_top_cand = args['max_top_cand']
 
   def train_epoch(self,epoch,loader):
     #tain_report_terminal= 10
     self.model.train()
     loss_buffer = []
     re_rank_idx = []
-    for batch,gt,t in loader:
-      #batch = batch.to(self.device)
+    for emb,scores,pos in loader:
+      em_map = emb['map'].to(self.device)
       self.optimizer.zero_grad()
-      batch = batch.to(self.device)
-      gt = gt.to(self.device)
-      std = 0.0001*epoch
-      noise = torch.randn(batch.size()) * std + 0
+      #batch = batch.to(self.device)
+      gt = pos['table'].to(self.device)
+      #std = 0.0001*epoch
+      #noise = torch.randn(batch.size()) * std + 0
       #batch = batch + noise.to(self.device)
-      out = self.model(batch)
-      #print("\n\n")
-      #a = torch.argsort(out[0],dim=-1,descending=True)
-      #print(a.detach().cpu().numpy())
+      out = self.model(em_map)
 
-      #b = t[0]
-      #print(b.detach().cpu().numpy())
-
-      #print("\n\n")
       loss_value = self.loss(out,gt)
       loss_value.backward()
       self.optimizer.step()
@@ -290,39 +272,62 @@ class AttentionTrainer(ReRankingTrainer):
     return(loss_buffer,re_rank_idx) 
 
 
-  def predict(self,testloader):
+  def predict(self,testloader,radius=[25]):
+      
       self.model.eval()
+      k = self.max_top_cand
+      global_metrics = {'tp': {r: [0] * k for r in radius}}
+      global_metrics['tp_rr'] = {r: [0] * k for r in radius}
+      global_metrics['RR'] = {r: [] for r in radius}
+      global_metrics['RR_rr'] = {r: [] for r in radius}
+      global_metrics['t_RR'] = []
+      n_samples = len(testloader)
       re_rank_idx = []
-      for x,_,t in testloader:
+      for emb,scores,pos in testloader:
         #x = 1-x # .cuda()
-        x = x.to(self.device)
+        query_pos = pos['q'].detach().numpy()
+        map_positions = pos['map'].squeeze().detach().numpy()
+
+        x = emb['map'].to(self.device)
+        tick = time()
         values = self.model(x)
 
-        values = torch.argsort(values,dim=-1,descending=True)
-        
-        values = values.detach().cpu().numpy().astype(np.uint8)
-        re_rank_idx.extend(values)
+        rr_nn_ndx = torch.argsort(values,dim=-1,descending=True)
+        t_rerank = time() - tick
 
+        global_metrics['t_RR'].append(t_rerank)
+        rr_nn_ndx = rr_nn_ndx.detach().cpu().numpy().astype(np.uint8)
+        re_rank_idx.append(rr_nn_ndx)
+
+        delta_rerank = query_pos - map_positions[rr_nn_ndx,:]
+        euclid_dist_rr = np.linalg.norm(delta_rerank, axis=1)
+        
+        topk_gd_dists = scores.squeeze().detach().numpy()
+        #euclid_dist_rr = values
+
+        # Count true positives for different radius and NN number
+        global_metrics['tp'] = {r: [global_metrics['tp'][r][nn] + (1 if (topk_gd_dists[:nn + 1] <= r).any() else 0) for nn in range(k)] for r in radius}
+        global_metrics['tp_rr'] = {r: [global_metrics['tp_rr'][r][nn] + (1 if (euclid_dist_rr[:nn + 1] <= r).any() else 0) for nn in range(k)] for r in radius}
+        global_metrics['RR'] = {r: global_metrics['RR'][r]+[next((1.0/(i+1) for i, x in enumerate(topk_gd_dists <= r) if x), 0)] for r in radius}
+        global_metrics['RR_rr'] = {r: global_metrics['RR_rr'][r]+[next((1.0/(i+1) for i, x in enumerate(euclid_dist_rr <= r) if x), 0)] for r in radius}
       #re_rank_idx = np.argsort(self.test_relevance)
       
+      # Calculate mean metrics
+      global_metrics["recall"] = {r: [global_metrics['tp'][r][nn] / n_samples for nn in range(k)] for r in radius}
+      global_metrics["recall_rr"] = {r: [global_metrics['tp_rr'][r][nn] / n_samples for nn in range(k)] for r in radius}
+      global_metrics['MRR'] = {r: np.mean(np.asarray(global_metrics['RR'][r])) for r in radius}
+      global_metrics['MRR_rr'] = {r: np.mean(np.asarray(global_metrics['RR_rr'][r])) for r in radius}
+      global_metrics['mean_t_RR'] = np.mean(np.asarray(global_metrics['t_RR']))
+
       #rerank_loops = test_base_loop
-      return(re_rank_idx)
-
-
-def load_cross_data(root,model_name,seq_train,seq_test):
-  train_data = RankingNewRetreivalDataset(root,model_name,seq_train)
-  #train_data = RankingMSE(root,model_name,seq_train)
-  trainloader = DataLoader(train_data,batch_size = len(train_data),shuffle=True)
-  # LOAD TEST DATA
-  test_data = RankingNewRetreivalDataset(root,model_name,seq_test)
-  #test_data = RankingMSE(root,model_name,seq_test)
-  testloader = DataLoader(test_data,batch_size = len(test_data)) #
-  return trainloader,testloader,test_data.get_max_top_cand()
+      return(re_rank_idx,global_metrics)
 
 
 def load_data(root,model_name,seq,train_percentage,dataset='new',batch_size=50):
   if dataset == 'new':
     train_data = RankingNewRetreivalDataset(root,model_name,seq)
+  elif dataset == 'AlphaQE':
+     train_data = AlphaQEData(root,model_name,seq)
   else:
     train_data = RankingMSE(root,model_name,seq)
 
@@ -331,8 +336,8 @@ def load_data(root,model_name,seq,train_percentage,dataset='new',batch_size=50):
 
   train, test =torch.utils.data.random_split(train_data,[train_size,test_size])
   #trainloader = DataLoader(train,batch_size = int(len(train)),shuffle=True)
-  trainloader = DataLoader(train,batch_size = len(test),shuffle=True)
-  testloader = DataLoader(test,batch_size = len(test)) #
+  trainloader = DataLoader(train,batch_size = len(train),shuffle=True)
+  testloader = DataLoader(test,batch_size = 1) #
 
   return trainloader,testloader,train_data.get_max_top_cand(),str(train_data)
 # LOAD TTRAINING DATA
@@ -347,33 +352,28 @@ Models = ['VLAD_pointnet', 'ORCHNet_pointnet' ,'SPoC_pointnet', 'GeM_pointnet']
 #Models = ['VLAD_pointnet']
 sequences = ['00','02','05','06','08']
 #sequences = ['00']
-dataset_type = 'new'
+dataset_type = 'AlphaQE'
 
-for j in range(1,10):
-  # 'SPoC_pointnet', 'GeM_pointnet' ,
-  #train_size = float(j)/10
+loss_list =[logistic_loss,margin_ranking_loss]
+for loss_obj in loss_list:
   for model_name in Models:
     for seq in sequences:
-      #torch.manual_seed(0)
-      #np.random.seed(0)
+      torch.manual_seed(0)
+      np.random.seed(0)
       #seq = '02'
       trainloader,testloader,max_top_cand,datasetname = load_data(root,model_name,seq,train_size,dataset_type,batch_size=100)
       #trainloader,testloader,max_top_cand  = load_cross_data(root,model_name,seq,seq)
 
       #===== RE-RANKING ========
       model = AttentionRanking(max_top_cand,256)
-      #
-      #model = MaskRanking(max_top_cand,256)
-      loss_fun = rankloss(max_top_cand)
-      #loss_fun = MSERanking()
 
-      #root_save = os.path.join('tests','loss_softmax',str(train_size),model_name,seq)
-      # prob_rank_loss, margin_rank_loss
-      root_save = os.path.join('results',"prob_rank_loss","ablation",model_name,datasetname,seq,str(train_size))
+      loss_fun = loss_obj(max_top_cand)
+      #loss_fun = margin_ranking_loss(max_top_cand)
+
+      root_save = os.path.join('results',str(loss_fun),"ablation",model_name,datasetname,seq,str(train_size))
       if not os.path.isdir(root_save):
         os.makedirs(root_save)
 
-      # experiment = os.path.join(root_save,f'{str(model)}-{str(train_size)}')
       experiment = os.path.join(root_save,f'{str(model)}')
       rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model,lr= 0.001,epochs = 300,lr_step=150,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
 
