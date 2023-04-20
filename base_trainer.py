@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from dataloaders.rankingdata import RankingDataset
 
 import RERANKING
-import loss 
+
 
 
 # =====================================================
@@ -40,6 +40,7 @@ class ReRankingTrainer(nn.Module):
     old_perfm  = 0
     loss_log   = []
     top_mnt = 5
+    
     try:
       btain_base_loop,base_sim =  trainloader.dataset.dataset.get_base_loops()
       train_targets = np.array(trainloader.dataset.dataset.get_targets())
@@ -87,7 +88,7 @@ class ReRankingTrainer(nn.Module):
       value = np.round(np.mean(loss),3)
       loss_log.append(value)
 
-      if epoch%self.lr_step == 0 and epoch >0:
+      if epoch%self.lr_step == 0 and epoch > 0:
         self.optimizer.param_groups[0]['lr'] = self.optimizer.param_groups[0]['lr']/10
   
       if epoch%self.tain_report_terminal == 0:
@@ -96,31 +97,35 @@ class ReRankingTrainer(nn.Module):
       # Val 
       if epoch % self.val_report == 0:
         
-        re_rank_idx = self.predict(testloader)
+        re_rank_idx,standard_metrics = self.predict(testloader)
         rerank_loops = np.array([loops[l] for loops,l in zip(test_base_loop,re_rank_idx)])
         rerank_perfm = retrieve_eval(rerank_loops,test_targets,top=top_mnt)
        
-        delta = rerank_perfm['recall'] - test_perf_record[top_mnt]['recall']
-        print(f"\nReRank Recall: {round(rerank_perfm['recall'],5)} | delta: {round(delta,5)} ")
+        #delta = standard_metrics['recall_rr'][25][top_mnt-1] - test_perf_record[top_mnt]['recall']
+        rerank_perfm = standard_metrics['recall_rr'][25][top_mnt-1]
+        delta = standard_metrics['recall_rr'][25][top_mnt-1] - standard_metrics['recall'][25][top_mnt-1]
+        print(f"\nReRank Recall: {round(rerank_perfm,5)} | delta: {round(delta,5)} ")
 
-        if rerank_perfm['recall']>old_perfm:
-          old_perfm = rerank_perfm['recall']
+        if rerank_perfm>old_perfm:
+          old_perfm = rerank_perfm
           perf_record = {}
 
           for i in self.top_cand:
             perf_record[i] = retrieve_eval(rerank_loops,test_targets,top=i)
 
-          best_perf_record = perf_record
+          best_perf_record = standard_metrics
           
           print("\nBest performance\n")
           #self.save_checkpoint(epoch,best_perf_record,self.experiment,top_mnt)
           #save_log = [ed_sim,ed_loop,rerank_loops,scores,target_ord]
     
     
-    self.save_results_csv(self.experiment,best_perf_record,test_perf_record,top_mnt)
+    self.save_results_csv2(self.experiment,best_perf_record,top_mnt)
     print("\n ******************Best*********************\n")
-    print(f"BaseLine  {test_perf_record[top_mnt]['recall']}")
-    print(f"Reranking {old_perfm}")
+    recall = np.round(best_perf_record['recall'][25][top_mnt-1],2)
+    recall_rr = np.round(best_perf_record['recall_rr'][25][top_mnt-1],2)
+    print(f"BaseLine  {recall}")
+    print(f"Reranking {recall_rr}")
 
 
   def save_checkpoint(self, epoch, best_log, filename,top_mnt):
@@ -137,10 +142,43 @@ class ReRankingTrainer(nn.Module):
     print("Saving current best: best_model.pth")
 
 
+  def save_results_csv2(self,file,results,top,**argv):
+    import pandas as pd
+    if file == None:
+      raise NameError    #file = self.results_file # Internal File name 
+    
+    metrics = list(results.keys())[5:]
+    recall= []
+    for tag in metrics[:2]:
+      v = results[tag][25]
+      recall.append(v)
+    
+    recall = np.transpose(np.array(recall))
+    recall = np.round(recall,2)
+
+    scores = np.zeros((recall.shape[0],3))
+    scores[0,0]= np.round(results['MRR'][25],2)
+    scores[0,1]= np.round(results['MRR_rr'][25],2)
+    scores[0,2]= results['mean_t_RR']
+    scores = np.hstack((recall,scores,))
+    # Check if the results were generated
+ 
+
+    colum = metrics
+    #rows = np.concatenate((top_cand,array),axis=1)
+    df = pd.DataFrame(scores,columns = metrics)
+    #file_results = file + '_' + 'best_model.csv'
+    best = np.round(results['recall_rr'][25][top-1],2)
+    checkpoint_dir = ''
+    filename = os.path.join(checkpoint_dir,f'{file}-{str(best)}.csv')
+    df.to_csv(filename)
+
 
   def save_results_csv(self,file,results,base_results,top):
     import pandas as pd
-    
+    metrics = list(results.keys())
+    values  = list(results.values())
+
     # Check if the results were generated
     #assert hasattr(self, 'results'), 'Results were not generated!'
     if file == None:
