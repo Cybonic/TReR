@@ -47,13 +47,17 @@ def search_for_best_model(files,top_cand = None):
         seq_files =  parse_file_struct(value,files_struct)
         best_model = []
         scores_vec = []
+        
         for kk, vfile in seq_files.items():
             nam_v = []
             revall_seq = []
             for file in vfile:
                 nam_v.append(file.split("/")[-1].split('-')[0])
                 df = pd.read_csv(file)
-                scores = df[['base','reranked']].values
+                if 'base' in df:
+                    scores = df[['reranked','base']].values
+                else:
+                    scores = df[['recall_rr','recall']].values
                 if top_cand != None :
                     assert isinstance(top_cand,list),"Top cand is not a list format"
                     scores = scores[top_cand,:]
@@ -74,7 +78,7 @@ if __name__ == '__main__':
     parser.add_argument(
       '--root', '-f',
       type=str,
-      default = "results/prob_rank_loss/ablation/**", # prob_rank_loss "results/margin_rank_loss/ablation/**"
+      default = "results/logistic_loss/ablation/**", # prob_rank_loss "results/margin_rank_loss/ablation/**"
       required=False,
       help='Dataset to train with. No Default',
     )

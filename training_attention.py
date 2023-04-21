@@ -16,227 +16,11 @@ from dataloaders.alphaqedata import AlphaQEData
 from base_trainer import ReRankingTrainer
 from time import time
 
-class CNN(nn.Module):
-    def __init__(self, d_model, hidden_dim, p):
-        super().__init__()
-        self.k1convL1 = nn.Linear(d_model,    hidden_dim)
-        self.k1convL2 = nn.Linear(hidden_dim, d_model)
-        self.activation = nn.ReLU()
-
-    def forward(self, x):
-        x = self.k1convL1(x)
-        x = self.activation(x)
-        x = self.k1convL2(x)
-        return x
-
-class EncoderLayer(nn.Module):
-    def __init__(self, d_model, num_heads, conv_hidden_dim, p=0.1):
-        super().__init__()
-
-        self.mha = torch.nn.MultiheadAttention(d_model, num_heads,p)
-        self.cnn = CNN(d_model, conv_hidden_dim, p)
-
-        self.layernorm1 = nn.LayerNorm(normalized_shape=d_model, eps=1e-6)
-        self.layernorm2 = nn.LayerNorm(normalized_shape=d_model, eps=1e-6)
-    
-    def forward(self, x):
-        
-        # Multi-head attention 
-        attn_output, _ = self.mha(x, x, x)  # (batch_size, input_seq_len, d_model)
-        
-        # Layer norm after adding the residual connection 
-        out1 = self.layernorm1(x + attn_output)  # (batch_size, input_seq_len, d_model)
-        
-        # Feed forward 
-        cnn_output = self.cnn(out1)  # (batch_size, input_seq_len, d_model)
-        
-        #Second layer norm after adding residual connection 
-        out2 = self.layernorm2(out1 + cnn_output)  # (batch_size, input_seq_len, d_model)
-
-        return out2
-
-class AttentionRanking(torch.nn.Module):
-    def __init__(self,cand=35,feat_size = 256):
-        super().__init__()
-        
-        self.Win =  nn.Parameter(torch.zeros(256,cand))
-        self.Wout =  nn.Parameter(torch.zeros(256,1))
-        
-        nn.init.normal_(self.Win.data, mean=0, std=0.1)
-        nn.init.normal_(self.Wout.data, mean=0, std=0.1)
-
-        self.att = torch.nn.MultiheadAttention(cand,1)
-        self.classifier = torch.nn.Conv1d(256, 1, 1)
-        self.fc = nn.Linear(cand,cand)
-        
-        fc_drop = [nn.LazyLinear(cand),
-             nn.ReLU(),
-             nn.Dropout(0.1)
-             ]
-      
-        self.fc_drop = nn.Sequential(*fc_drop)
-        layer = [EncoderLayer(256,1,cand)]
-        self.enc_n = 1
-        for i in range(self.enc_n):
-          layer += layer
-        self.layer = nn.Sequential(*layer)
-
-    def __str__(self):
-      #return f"AttentionRanking_{self.enc_n}xEncoder_cnn"
-      return f"AttentionRanking_CanAtt_cnn"
-    
-    def forward(self,k):
-        k = torch.transpose(k,dim0=2,dim1=1)
-        out, attn_output_weights = self.att(k,k,k)
-        out = k + out
-        #out = torch.transpose(out,dim0=2,dim1=1)
-        #
-        #
-        #out = k
-        #
-       
-        # out = self.layer(k)
-        # out = self.fc_drop(out)
-        # out = torch.transpose(out,dim0=2,dim1=1)
-        out = self.classifier(out).squeeze()
-        #  
-        #out = torch.matmul(out,self.Wout).squeeze()
-        #out,idx  = torch.max(out,dim=-1)
-        #if self.training:
-        #   return out.float()
-        return out.float()
-
-       
-
-class MHAERanking(torch.nn.Module):
-    def __init__(self,cand=35,feat_size = 256):
-      super().__init__()
-        
-
-      h = cand
-      self.atta = torch.nn.MultiheadAttention(cand,1)
-      
-      self.ln1 =  nn.LayerNorm(256)
-      self.ln2 =  nn.LayerNorm(256)
-      
-      fc = [nn.LazyLinear(h),
-             nn.ReLU(),
-             nn.LazyLinear(cand)
-             ]
-      
-      fc_drop = [nn.LazyLinear(h),
-             nn.ReLU(),
-             nn.Dropout(0.1)
-             ]
-      
-      
-      
-      
-      
-      self.mlp = nn.Sequential(*fc_drop)
-      self.drop1 = nn.Dropout(0.1)
-      self.drop2 = nn.Dropout(0.1)
-
-    def __str__(self):
-      return "MaskRanking"
-    
-    def forward(self,x):
-      #a,(b,c) = self.att(x,x,x)
-      x, attn_output_weights = self.atta(x,x,x)
-      #z = self.ln1(x + self.drop1(x))
-      #z =  self.ln2(z + self.drop2(self.mlp(z)))
-      return z.float()
-    
-
-class MaskRanking(torch.nn.Module):
-    def __init__(self,cand=35,feat_size = 256):
-      super().__init__()
-        
-      self.Win =  nn.Parameter(torch.zeros(cand,cand))
-      self.Wout =  nn.Parameter(torch.zeros(cand,1))
-        
-      nn.init.normal_(self.Win.data, mean=0, std=0.5)
-      nn.init.normal_(self.Wout.data, mean=0, std=0.5)
-
-      self.att = torch.nn.MultiheadAttention(256,1)
-      self.classifier = torch.nn.Conv1d(256, 1, 1)
-      self.att2 = torch.nn.MultiheadAttention(cand,1)
-
-      self.classifier = torch.nn.Conv1d(256, 1, 1)
-      layer = [MHAERanking(cand)]
-      for i in range(1):
-        layer += layer
-
-      self.fc = nn.Linear(cand,cand)
-      self.layer = nn.Sequential(*layer)
-      self.drop = nn.Dropout(0.2)
-      self.tr = nn.Transformer(256,1,1,1,37)
-
-    def __str__(self):
-      return "MaskRanking"
-    
-    def forward(self,k):
-
-     
-      #out = []
-      #for w in  self.Win:
-      #  out.append(torch.matmul(k,w))
-      #out = k
-      #ou_stack = torch.stack(out,dim=1)
-      #out,std_out = torch.max(ou_stack,dim=1)
-      k = k.tranpose(dim0=2,dim1=1)
-      ak,map= self.att(k,k,k)
-      k = ak  + k
-      out = self.drop(k)
-      out = torch.transpose(out,dim0=2,dim1=1)
-      k = self.classifier(out).squeeze()
-      
-      #k,idx  = torch.max(k,dim=-1)
-      
-      out = self.drop(k)
-      out = self.fc(out)
-      #
-      #out = torch.matmul(out,self.Wout).squeeze()
-       
-      
-      #out = self.fc(out)
-      #out,_= self.att2(out,out,out)
-      #out = out + out 
-
-      if self.training:
-          return out.float()
-      return out.float()
-    
+from losses import logistic_loss,margin_ranking_loss
+from models.TranformerEncoder import TranformerEncoder
+from models.AttentionRanking import AttentionRanking
 
 # =====================================================
-class logistic_loss:
-  def __init__(self,cand=37):
-    self.x1_perm,self.x2_perm = comp_pair_permutations(cand)
-  
-  def __call__(self,y_pred,y_true):
-    x1 = y_pred[:,self.x1_perm]
-    x2 = y_pred[:,self.x2_perm]
-    y = y_true[:,self.x1_perm,self.x2_perm]
-    value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0),dim=-1)
-    return torch.mean(value)
-
-  def __str__(self):
-     return 'logistic_loss'
-
-class margin_ranking_loss:
-  def __init__(self,cand=37):
-        self.loss_fn = torch.nn.MarginRankingLoss(0.1)
-        self.x1_perm,self.x2_perm = comp_pair_permutations(cand)
-
-  def __call__(self,y_pred,y_true):
-    x1 = y_pred[:,self.x1_perm]
-    x2 = y_pred[:,self.x2_perm]
-    y  = y_true[:,self.x1_perm,self.x2_perm]
-    value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0),dim=-1)
-    return torch.mean(value)
-
-  def __str__(self):
-     return 'margin_ranking_loss'
 
       
 class AttentionTrainer(ReRankingTrainer):
@@ -285,7 +69,7 @@ class AttentionTrainer(ReRankingTrainer):
       re_rank_idx = []
       for emb,scores,pos in testloader:
         #x = 1-x # .cuda()
-        query_pos = pos['q'].detach().numpy()
+        query_pos = pos['q'].squeeze().detach().numpy()
         map_positions = pos['map'].squeeze().detach().numpy()
 
         x = emb['map'].to(self.device)
@@ -296,7 +80,7 @@ class AttentionTrainer(ReRankingTrainer):
         t_rerank = time() - tick
 
         global_metrics['t_RR'].append(t_rerank)
-        rr_nn_ndx = rr_nn_ndx.detach().cpu().numpy().astype(np.uint8)
+        rr_nn_ndx = rr_nn_ndx.squeeze().detach().cpu().numpy().astype(np.uint8)
         re_rank_idx.append(rr_nn_ndx)
 
         delta_rerank = query_pos - map_positions[rr_nn_ndx,:]
@@ -362,10 +146,10 @@ for loss_obj in loss_list:
       np.random.seed(0)
       #seq = '02'
       trainloader,testloader,max_top_cand,datasetname = load_data(root,model_name,seq,train_size,dataset_type,batch_size=100)
-      #trainloader,testloader,max_top_cand  = load_cross_data(root,model_name,seq,seq)
-
       #===== RE-RANKING ========
+      #
       model = AttentionRanking(max_top_cand,256)
+      #model = TranformerEncoder(max_top_cand,256)
 
       loss_fun = loss_obj(max_top_cand)
       #loss_fun = margin_ranking_loss(max_top_cand)

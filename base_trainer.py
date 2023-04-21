@@ -92,7 +92,7 @@ class ReRankingTrainer(nn.Module):
         self.optimizer.param_groups[0]['lr'] = self.optimizer.param_groups[0]['lr']/10
   
       if epoch%self.tain_report_terminal == 0:
-        print('T ({}) | Loss {:.10f} Recall {:.3}'.format(epoch,np.mean(loss_log),train_rerank_perfm['recall']))
+        print('T ({}) | Loss {:.5f} Recall {:.3}'.format(epoch,np.mean(loss_log),train_rerank_perfm['recall']))
 
       # Val 
       if epoch % self.val_report == 0:

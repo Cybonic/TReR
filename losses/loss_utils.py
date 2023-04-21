@@ -5,6 +5,14 @@ from allrank.models.losses import DEFAULT_EPS
 from allrank.models.model_utils import get_torch_device
 
 
+def pairwise_permutations(n_samples):
+    """
+    
+    """
+    combo_idx = torch.arange(n_samples)
+    permutation = torch.from_numpy(np.array([np.array([a, b]) for idx, a in enumerate(combo_idx) for b in combo_idx[idx + 1:]]))
+    return permutation[:,0],permutation[:,1]
+
 def sinkhorn_scaling(mat, mask=None, tol=1e-6, max_iter=50):
     """
     Sinkhorn scaling procedure.
