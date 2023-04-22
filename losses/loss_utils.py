@@ -1,8 +1,8 @@
 import torch
 import numpy as np
 
-from allrank.models.losses import DEFAULT_EPS
-from allrank.models.model_utils import get_torch_device
+#from allrank.models.losses import DEFAULT_EPS
+#from allrank.models.model_utils import get_torch_device
 
 
 def pairwise_permutations(n_samples):

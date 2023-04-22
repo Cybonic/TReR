@@ -49,12 +49,12 @@ class TranformerEncoder(torch.nn.Module):
     self.enc_n = 1
     for i in range(self.enc_n):
       layer += layer
+
     self.layer = nn.Sequential(*layer)
 
   def __str__(self):
-      return f"TranformerEncoder_max"
+      return f"TranformerEncoder"
   
   def forward(self,k):
         out = self.layer(k)
-        out,idx = torch.max(out,dim=-1)   
         return out.float()
