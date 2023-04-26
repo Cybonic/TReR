@@ -132,17 +132,21 @@ if __name__=='__main__':
   root = '/home/tiago/Dropbox/RAS-publication/predictions/paper/kitti/place_recognition'
 
   train_size = 0.2
-  device = 'cuda:0'
-  #device = 'cpu'
+  #device = 'cuda:0'
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
   Models = ['VLAD_pointnet', 'ORCHNet_pointnet' ,'SPoC_pointnet', 'GeM_pointnet']
   #Models = ['VLAD_pointnet']
   sequences = ['00','02','05','06','08']
   #sequences = ['00']
+  #model_list = ['tranformerencoder_max_fc_drop','tranformerencoder_wout_fc_drop','tranformerencoder_cnn_fc_drop',
+  #              'attention_max_fc_drop','attention_wout_fc_drop','attention_cnn_fc_drop']
   model_list = ['tranformerencoder_max','tranformerencoder_wout','tranformerencoder_cnn',
                 'attention_max','attention_wout','attention_cnn']
   
-  loss_list  = [logistic_loss,margin_ranking_loss]
+  model_list = ['attention_max','attention_wout','attention_cnn','attention_max_fc_drop','attention_wout_fc_drop','attention_cnn_fc_drop']
+  model_list = ['wout','wout_fc']
+  loss_list  = [logistic_loss]#,margin_ranking_loss]
 
   for model_obj in model_list:
     for loss_obj in loss_list:
@@ -158,12 +162,12 @@ if __name__=='__main__':
           # model_fun = model_obj(max_top_cand,256)
           loss_fun = loss_obj(max_top_cand)
 
-          root_save = os.path.join('results',str(loss_fun),"ablation",model_name,datasetname,seq,str(train_size))
+          root_save = os.path.join('results',"paperv2",'noAttention',str(loss_fun),model_name,datasetname,seq,str(train_size))
           if not os.path.isdir(root_save):
             os.makedirs(root_save)
 
           experiment = os.path.join(root_save,f'{str(model_fun)}')
-          rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model_fun,lr= 0.001,epochs = 300,lr_step=500,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
+          rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model_fun,lr= 0.001,epochs = 500,lr_step=250,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
 
           rerank.Train(trainloader,testloader)
 

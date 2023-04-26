@@ -12,8 +12,6 @@ from utils import retrieve_eval
 from torch.utils.data import DataLoader
 from dataloaders.rankingdata import RankingDataset
 
-import RERANKING
-
 
 
 # =====================================================

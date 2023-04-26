@@ -168,7 +168,7 @@ if __name__ == '__main__':
     parser.add_argument(
       '--root', '-f',
       type=str,
-      default = "results/prob_rank_loss/**",
+      default = "results/paperv2/**",
       required=False,
       help='Dataset to train with. No Default',
     )

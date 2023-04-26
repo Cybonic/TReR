@@ -78,7 +78,7 @@ if __name__ == '__main__':
     parser.add_argument(
       '--root', '-f',
       type=str,
-      default = "results/logistic_loss/ablation/**", # logistic_loss prob_rank_loss "results/margin_rank_loss/ablation/**"
+      default = "results/paperv2/batch_first_false/**", # logistic_loss prob_rank_loss "results/margin_rank_loss/ablation/**"
       required=False,
       help='Dataset to train with. No Default',
     )
@@ -114,7 +114,7 @@ if __name__ == '__main__':
     best_model = []
     for mm in un_m:
         compare = [i for i,mi in enumerate(best_model_model) if mi in mm]
-        ms = np.round(np.mean(np.array(best_model_score)[compare]),2)
+        ms = np.round(np.mean(np.array(best_model_score)[compare]),4)
         best_score.append(ms)
         best_model.append(mm)
         #print(f"{mm} = {ms}")

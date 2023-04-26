@@ -14,7 +14,7 @@ class AttentionRanking(torch.nn.Module):
         nn.init.normal_(self.Win.data, mean=0, std=0.1)
         nn.init.normal_(self.Wout.data, mean=0, std=0.1)
 
-        self.att = torch.nn.MultiheadAttention(feat_size,1)
+        self.att = torch.nn.MultiheadAttention(feat_size,1, batch_first=True)
         self.classifier = torch.nn.Conv1d(256, 1, 1)
         self.fc = nn.Linear(cand,cand)
         
@@ -26,26 +26,12 @@ class AttentionRanking(torch.nn.Module):
         self.fc_drop = nn.Sequential(*fc_drop)
 
     def __str__(self):
-      return f"AttentionRanking"
+      return f"AttentionRanking_BF1" # -> Batch first = True
     
     def forward(self,k):
         #k = torch.transpose(k,dim0=2,dim1=1)
         out, attn_output_weights = self.att(k,k,k)
         out = k + out
-        #out = torch.transpose(out,dim0=2,dim1=1)
-        #
-        #
-        #out = k
-        #
-        #out,idx  = torch.max(out,dim=-1)
-        #out = self.fc_drop(out)
-        #out = torch.transpose(out,dim0=2,dim1=1)
-        #out = self.classifier(out).squeeze()
-        #  
-        #out = torch.matmul(out,self.Wout).squeeze()
-        #out,idx  = torch.max(out,dim=-1)
-        #if self.training:
-        #   return out.float()
         return out.float()
 
 
@@ -55,7 +41,7 @@ class AttentionRankingWout(torch.nn.Module):
         
         self.Wout =  nn.Parameter(torch.zeros(256,1))
         nn.init.normal_(self.Wout.data, mean=0, std=0.1)
-        self.att = torch.nn.MultiheadAttention(feat_size,1)
+        self.att = torch.nn.MultiheadAttention(feat_size,1,batch_first=True)
 
     def __str__(self):
       return f"AttentionRanking_FeatAtt_Wout"

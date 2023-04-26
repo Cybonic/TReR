@@ -11,7 +11,9 @@ class margin_ranking_loss:
     x1 = y_pred[:,self.x1_perm]
     x2 = y_pred[:,self.x2_perm]
     y  = y_true[:,self.x1_perm,self.x2_perm]
-    value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0),dim=-1)
+    value = self.loss_fn(x1,x2,y)
+    #value = torch.sum((y*torch.log2(1+torch.exp(-(x1-x2)))).clip(min=0),dim=-1)
+
     return torch.mean(value)
 
   def __str__(self):
