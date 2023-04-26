@@ -50,8 +50,15 @@ def cnn(**argv):
 def wout(**argv):
     return Wout(**argv)
 
+def max(**argv):
+    return Max(**argv)
+
+
 def cnn_fc(**argv):
     return FC_Drop(Cnn(**argv),**argv)
 
 def wout_fc(**argv):
     return FC_Drop(Wout(**argv),**argv)
+
+def max_fc(**argv):
+    return FC_Drop(Max(**argv),**argv)

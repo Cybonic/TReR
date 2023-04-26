@@ -27,17 +27,23 @@ class Wout(torch.nn.Module):
   
 
 class Max(torch.nn.Module):
-  def __init__(self,model,**argv):
+  def __init__(self,model=None,**argv):
     super().__init__()
-    self.model = model
+    if model == None:
+      self.model = ''
+    else:
+      self.model = model
     
   def __str__(self):
       return f"{str(self.model)}_max"
   
   def forward(self,k):
-        out = self.model(k) # outputs B,C,F
-        out,idx = torch.max(out,dim=-1) # -> B,C
-        return out.float()
+    if self.model == '':
+      out = k
+    else:
+      out = self.model(k) # outputs B,C,F
+    out,idx = torch.max(out,dim=-1) # -> B,C
+    return out.float()
 
 class Cnn(torch.nn.Module):
   def __init__(self,model=None,**argv):

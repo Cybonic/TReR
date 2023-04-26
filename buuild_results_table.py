@@ -26,6 +26,107 @@ def get_all_files(root):
     
     return files
 
+def parse_file_diff(file,top_cand):
+    
+    model_name = file.split("/")[-1].split('-')[0]
+    df = pd.read_csv(file)
+
+    if 'base' in df:
+        scores = df[['reranked','base']].values
+    else:
+        scores = df[['recall','recall_rr']].values
+    
+    if top_cand != None:
+        top_cand = np.array(top_cand)-1
+        scores = scores[top_cand,:]
+
+    rr_score = np.round(np.mean(scores[:,1]-scores[:,0]),2)
+    return(model_name,rr_score)
+
+def parse_file_scores(file,top_cand,metric='recall_rr'):
+    
+    model_name = file.split("/")[-1].split('-')[0]
+    df = pd.read_csv(file)
+
+    if 'base' in df:
+        scores = df[['reranked']].values
+    else:
+        scores = df[[metric]].values
+    
+    if top_cand != None:
+        top_cand = np.array(top_cand)-1
+        scores = scores[top_cand,:]
+
+    rr_score = np.round(scores,2)
+    return(model_name,rr_score)
+
+
+def model_wise_mean_diff_score(files,cand=[1,5,10]):
+    
+    # Parse files based on the model name
+    model_list = []
+    score_vec  = []
+    for file in files:
+        #model,score = parse_file_scores(file,cand)
+        model,score = parse_file_diff(file,cand)
+        model_list.append(model)
+        score_vec.append(score)
+
+    # Compute the average performance of each model
+    un_m = np.unique(model_list)
+    best_score = []
+    best_model = []
+    for mm in un_m:
+        compare = [i for i,mi in enumerate(model_list) if mi in mm]
+        ms = np.round(np.mean(np.array(score_vec)[compare]),4)
+        best_score.append(ms)
+        best_model.append(mm)
+    return(best_model,best_score)
+
+def model_wise_baseline_scores(files,cand=[1,5,10]):
+     # Parse files based on the model name
+    model_list = []
+    score_vec  = []
+    for file in files:
+        model,score = parse_file_scores(file,cand,metric='recall')
+        #model,score = parse_file_diff(file,cand)
+        model_list.append(model)
+        score_vec.append(score)
+
+    # Compute the average performance of each model
+    un_m = np.unique(model_list)
+    best_score = []
+    best_model = []
+    for mm in un_m:
+        compare = [i for i,mi in enumerate(model_list) if mi == mm]
+        ms = np.array(score_vec)[compare]
+        best_score.append(ms)
+        best_model.append(mm)
+    return(best_model,best_score)
+
+def model_wise_mean_scores(files,cand=[1,5,10]):
+    
+    # Parse files based on the model name
+    model_list = []
+    score_vec  = []
+    for file in files:
+        model,score = parse_file_scores(file,cand)
+        #model,score = parse_file_diff(file,cand)
+        model_list.append(model)
+        score_vec.append(score)
+
+    # Compute the average performance of each model
+    un_m = np.unique(model_list)
+    best_score = []
+    best_model = []
+    for mm in un_m:
+        compare = [i for i,mi in enumerate(model_list) if mi == mm]
+        ms = np.array(score_vec)[compare]
+        best_score.append(ms)
+        best_model.append(mm)
+    return(best_model,best_score)
+
+
 def parse_file_struct(files,files_struct):
 
     tags = list(files_struct.keys())
@@ -78,7 +179,7 @@ if __name__ == '__main__':
     parser.add_argument(
       '--root', '-f',
       type=str,
-      default = "results/paperv2/batch_first_false/**", # logistic_loss prob_rank_loss "results/margin_rank_loss/ablation/**"
+      default = "results/paperv2/noAttention/**", # logistic_loss prob_rank_loss "results/margin_rank_loss/ablation/**"
       required=False,
       help='Dataset to train with. No Default',
     )
@@ -87,8 +188,32 @@ if __name__ == '__main__':
     files_struct = {'00':[],'02':[],'05':[],'06':[],'08':[]}
     files = get_all_files(FLAGS.root)
 
-    model_struct = {'ORCHNet_pointnet':[],'VLAD_pointnet':[],'SPoC_pointnet':[],'GeM_pointnet':[]}
-    files = parse_file_struct(files,model_struct)
+    # model_struct = {'ORCHNet_pointnet':[],'VLAD_pointnet':[],'SPoC_pointnet':[],'GeM_pointnet':[]}
+    
+    unique_models,scores = model_wise_mean_diff_score(files,[1,5,10])
+
+    TopScore = np.argsort(scores)[::-1]
+    for j in TopScore:
+        print(f"{unique_models[j]}=={scores[j]}")
+
+    #exit()
+
+    #model_struct = {'VLAD_pointnet':[]}
+    #files = parse_file_struct(files,model_struct)
+    unique_models,scores = model_wise_mean_scores(files,[1,5,10,15])
+    for mm, values in zip(unique_models,scores):
+        print(mm)
+        values = np.mean(values,axis=0)
+        print(values)
+    
+    
+    unique_models,scores = model_wise_baseline_scores(files,[1,5,10,15])
+    for mm, values in zip(unique_models,scores):
+        print(mm)
+        values = np.mean(values,axis=0)
+        print(values)
+    exit()
+    
     best_model_dict = search_for_best_model(files,[1,5,10])
     # print(best_model_dict)
     

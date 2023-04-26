@@ -145,7 +145,7 @@ if __name__=='__main__':
                 'attention_max','attention_wout','attention_cnn']
   
   model_list = ['attention_max','attention_wout','attention_cnn','attention_max_fc_drop','attention_wout_fc_drop','attention_cnn_fc_drop']
-  model_list = ['wout','wout_fc']
+  model_list = ['max_fc']
   loss_list  = [logistic_loss]#,margin_ranking_loss]
 
   for model_obj in model_list:
