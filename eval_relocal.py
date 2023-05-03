@@ -120,7 +120,7 @@ for model_name in Models:
 
       descriptors = testloader.dataset.get_descriptors()
       dataset_len = len(descriptors)
-
+      
       queries = np.arange(1,dataset_len-1)
       database = np.arange(1,dataset_len)
       loops, sim = relocalize(queries,database,descriptors,top_cand=max_top_cand,window=500,warmup=600,sim_tresh=None)

@@ -18,8 +18,7 @@ from time import time
 from losses.logistic_loss import logistic_loss
 from losses.margin_ranking_loss import margin_ranking_loss
 
-#rom models.TranformerEncoder import TranformerEncoder,TranformerEncoderWout
-#from models.AttentionRanking import AttentionRanking,AttentionRankingWout
+
 from models import pipeline
 # =====================================================
 
@@ -106,6 +105,16 @@ class AttentionTrainer(ReRankingTrainer):
       #rerank_loops = test_base_loop
       return(re_rank_idx,global_metrics)
 
+def load_cross_data(root,model_name,seq_train,seq_test):
+  train_data = RankingNewRetreivalDataset(root,model_name,seq_train)
+  #train_data = RankingMSE(root,model_name,seq_train)
+  trainloader = DataLoader(train_data,batch_size = len(train_data),shuffle=True)
+  # LOAD TEST DATA
+  test_data = RankingNewRetreivalDataset(root,model_name,seq_test)
+  #test_data = RankingMSE(root,model_name,seq_test)
+  testloader = DataLoader(test_data,batch_size = len(test_data)) #
+  return trainloader,testloader,test_data.get_max_top_cand()
+
 
 def load_data(root,model_name,seq,train_percentage,dataset='new',batch_size=50):
   if dataset == 'new':
@@ -129,7 +138,7 @@ def load_data(root,model_name,seq,train_percentage,dataset='new',batch_size=50):
 if __name__=='__main__':
 
 
-  root = '/home/tiago/Dropbox/RAS-publication/predictions/paper/kitti/place_recognition'
+  root = '/home/tiago/Dropbox/RERANKING-publication/predictions/paper/kitti/place_recognition'
 
   train_size = 0.2
   #device = 'cuda:0'
@@ -141,13 +150,12 @@ if __name__=='__main__':
   #sequences = ['00']
   #model_list = ['tranformerencoder_max_fc_drop','tranformerencoder_wout_fc_drop','tranformerencoder_cnn_fc_drop',
   #              'attention_max_fc_drop','attention_wout_fc_drop','attention_cnn_fc_drop']
-  model_list = ['tranformerencoder_max','tranformerencoder_wout','tranformerencoder_cnn',
-                'attention_max','attention_wout','attention_cnn']
+  model_list = ['tranformerencoder_max_fc_drop','attention_max_fc_drop']
   
-  model_list = ['attention_max','attention_wout','attention_cnn','attention_max_fc_drop','attention_wout_fc_drop','attention_cnn_fc_drop']
-  model_list = ['max_fc']
+  #model_list = ['attention_max_fc_drop']
+  #model_list = ['max_fc']
   loss_list  = [logistic_loss]#,margin_ranking_loss]
-
+  #for train_size in range(1,9):
   for model_obj in model_list:
     for loss_obj in loss_list:
       for model_name in Models:
@@ -155,19 +163,20 @@ if __name__=='__main__':
           torch.manual_seed(0)
           np.random.seed(0)
           #seq = '02'
+          #train_size  =float(train_size)/10
           trainloader,testloader,max_top_cand,datasetname = load_data(root,model_name,seq,train_size,'AlphaQE',batch_size=100)
           #===== RE-RANKING ========
 
           model_fun = pipeline.__dict__[model_obj](cand=max_top_cand,feat_size=256)
           # model_fun = model_obj(max_top_cand,256)
           loss_fun = loss_obj(max_top_cand)
-
-          root_save = os.path.join('results',"paperv2",'noAttention',str(loss_fun),model_name,datasetname,seq,str(train_size))
+          root_save = os.path.join('results',"paperv2",'final',str(loss_fun),model_name,datasetname,seq,str(train_size))
+          #root_save = os.path.join('results',"paperv2",'final',str(loss_fun),model_name,datasetname,seq,str(train_size))
           if not os.path.isdir(root_save):
             os.makedirs(root_save)
 
           experiment = os.path.join(root_save,f'{str(model_fun)}')
-          rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model_fun,lr= 0.001,epochs = 500,lr_step=250,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
+          rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model_fun,lr= 0.001,epochs = 200,lr_step=250,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
 
           rerank.Train(trainloader,testloader)
 

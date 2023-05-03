@@ -22,7 +22,7 @@ class EncoderLayer(nn.Module):
     def __init__(self, d_model, num_heads, conv_hidden_dim, p=0.1):
         super().__init__()
         #self.mha = MultiHeadAttention(d_model, num_heads, p=0.1)
-        self.mha = torch.nn.MultiheadAttention(d_model, num_heads,p)#,batch_first=True)
+        self.mha = torch.nn.MultiheadAttention(d_model, num_heads,p,batch_first=True)
         self.cnn = CNN(d_model, conv_hidden_dim, p)
         self.layernorm1 = nn.LayerNorm(normalized_shape=d_model, eps=1e-6)
         self.layernorm2 = nn.LayerNorm(normalized_shape=d_model, eps=1e-6)
@@ -42,8 +42,9 @@ class EncoderLayer(nn.Module):
 class TranformerEncoder(torch.nn.Module):
   def __init__(self,cand=35,feat_size = 256):
     super().__init__()
+    self.heads = 1
     self.classifier = torch.nn.Conv1d(256, 1, 1)
-    layer = [EncoderLayer(feat_size,1,cand)]
+    layer = [EncoderLayer(feat_size,self.heads,cand)]
     self.enc_n = 1
     for i in range(self.enc_n):
       layer += layer
@@ -51,7 +52,7 @@ class TranformerEncoder(torch.nn.Module):
     self.layer = nn.Sequential(*layer)
 
   def __str__(self):
-      return f"TranformerEncoder" # -> Batch first = True
+      return f"TranformerEncoder_BFT_x{self.enc_n}_headx{self.heads}" # -> Batch first = True
   
   def forward(self,k):
         out = self.layer(k)

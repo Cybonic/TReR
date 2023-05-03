@@ -114,7 +114,7 @@ class ReRankingTrainer(nn.Module):
           best_perf_record = standard_metrics
           
           print("\nBest performance\n")
-          #self.save_checkpoint(epoch,best_perf_record,self.experiment,top_mnt)
+          self.save_checkpoint(epoch,best_perf_record,self.experiment,top_mnt)
           #save_log = [ed_sim,ed_loop,rerank_loops,scores,target_ord]
     
     
@@ -133,7 +133,7 @@ class ReRankingTrainer(nn.Module):
         'state_dict': self.model.state_dict(),
         'monitor_best': best_log,
     }
-    best = round(best_log[top_mnt]['recall'],2)
+    best = round(best_log['recall_rr'][25][top_mnt],2)
     checkpoint_dir = ''
     filename = os.path.join(checkpoint_dir, f'{filename}-{best}.pth')
     torch.save(state, filename)

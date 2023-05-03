@@ -174,12 +174,24 @@ def search_for_best_model(files,top_cand = None):
     return best_model_dict
 
 
+def results_to_pandas(files,target):
+    import pandas as pd
+    for key,file in files.items():
+        print(key)
+        unique_models,scores = model_wise_mean_scores(file,[1,5,10,15])
+        idx = np.where(target == unique_models)
+        for unique_model, score in zip(unique_models,scores):
+            if unique_model.startswith(target):
+                print(unique_model)
+                print(score)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("./infer.py")
     parser.add_argument(
       '--root', '-f',
       type=str,
-      default = "results/paperv2/noAttention/**", # logistic_loss prob_rank_loss "results/margin_rank_loss/ablation/**"
+      default = "results/final/**", # logistic_loss prob_rank_loss "results/margin_rank_loss/ablation/**"
       required=False,
       help='Dataset to train with. No Default',
     )
@@ -197,11 +209,20 @@ if __name__ == '__main__':
         print(f"{unique_models[j]}=={scores[j]}")
 
     #exit()
-
-    #model_struct = {'VLAD_pointnet':[]}
-    #files = parse_file_struct(files,model_struct)
-    unique_models,scores = model_wise_mean_scores(files,[1,5,10,15])
+    
+    model_struct = {'VLAD_pointnet':[],'GeM_pointnet':[],'ORCHNet_pointnet':[],'SPoC_pointnet':[]}
+    files = parse_file_struct(files,model_struct)
+    
+    for key, values in files.items():
+        print("\n==================================")
+        print(key)
+        files_struct = {'00':[],'02':[],'05':[],'06':[],'08':[]}
+        file_seq = parse_file_struct(values,files_struct)
+        
+        results_to_pandas(file_seq,'TranformerEncoder_BFT_x1_headx1_max_fc_drop')
+    
     for mm, values in zip(unique_models,scores):
+
         print(mm)
         values = np.mean(values,axis=0)
         print(values)
