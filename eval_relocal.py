@@ -12,15 +12,12 @@ from dataloaders.rankingdata import RankingMSE,RankingNewRetreivalDataset
 import numpy as np
 from tqdm import tqdm
 
-def load_cross_data(root,model_name,seq_train,seq_test):
-  train_data = RankingNewRetreivalDataset(root,model_name,seq_train)
-  #train_data = RankingMSE(root,model_name,seq_train)
-  trainloader = DataLoader(train_data,batch_size = len(train_data),shuffle=True)
+def load_cross_data(root,model_name,seq):
   # LOAD TEST DATA
-  test_data = RankingNewRetreivalDataset(root,model_name,seq_test)
+  test_data = RankingNewRetreivalDataset(root,model_name,seq)
   #test_data = RankingMSE(root,model_name,seq_test)
   testloader = DataLoader(test_data,batch_size = len(test_data)) #
-  return trainloader,testloader,test_data.get_max_top_cand()
+  return testloader,test_data.get_max_top_cand()
 
 
 def relocal_metric(relevant_hat,true_relevant):
@@ -103,6 +100,7 @@ def relocalize(queries,database,descriptors,top_cand,window=500,warmup = 600,sim
 
 
 root = '/home/tiago/Dropbox/RAS-publication/predictions/paper/kitti'
+root = '/home/tiago/Dropbox/RERANKING-publication/predictions/paper/kitti'
 
 train_size = 0.2
 device = 'cuda:0'
@@ -116,7 +114,8 @@ import pandas as pd
 import torch
 for model_name in Models:
     for seq in sequences:
-      train,testloader,max_top_cand = load_cross_data(root,model_name,seq,seq)
+      
+      testloader,max_top_cand = load_cross_data(root,model_name,seq)
 
       descriptors = testloader.dataset.get_descriptors()
       dataset_len = len(descriptors)

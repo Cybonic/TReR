@@ -1,0 +1,7 @@
+
+
+RESULTS:
+ - BATCH size: Due to lack of memory in GPU, I reduzed the batch size from "Size of dataset" to 50, 
+    which resulted in a more stable results: 
+ - Stacked Transformer Encoders: 
+    cross_seq_transformer_output_study_v3 : 

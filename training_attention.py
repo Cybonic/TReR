@@ -9,18 +9,20 @@ import numpy as np
 
 
 from torch.utils.data import DataLoader
-from dataloaders.rankingdata import RankingDataset,RankingMSE,RankingNewRetreivalDataset
-from dataloaders.alphaqedata import AlphaQEData
+from dataloaders.alphaqedata import AlphaQEData,CROSS
+from dataloaders.logg3d import LOGGNet3D_CROSS
 
 from base_trainer import ReRankingTrainer
 from time import time
 
 from losses.logistic_loss import logistic_loss
-from losses.margin_ranking_loss import margin_ranking_loss
+
 
 
 from models import pipeline
 # =====================================================
+
+   
 
       
 class AttentionTrainer(ReRankingTrainer):
@@ -36,11 +38,7 @@ class AttentionTrainer(ReRankingTrainer):
     for emb,scores,pos in loader:
       em_map = emb['map'].to(self.device)
       self.optimizer.zero_grad()
-      #batch = batch.to(self.device)
       gt = pos['table'].to(self.device)
-      #std = 0.0001*epoch
-      #noise = torch.randn(batch.size()) * std + 0
-      #batch = batch + noise.to(self.device)
       out = self.model(em_map)
 
       loss_value = self.loss(out,gt)
@@ -59,20 +57,16 @@ class AttentionTrainer(ReRankingTrainer):
   def predict(self,testloader,radius=[25]):
       
       self.model.eval()
+
+
       k = self.max_top_cand
-      global_metrics = {'tp': {r: [0] * k for r in radius}}
-      global_metrics['tp_rr'] = {r: [0] * k for r in radius}
-      global_metrics['RR'] = {r: [] for r in radius}
-      global_metrics['RR_rr'] = {r: [] for r in radius}
-      global_metrics['t_RR'] = []
+    
+      global_metrics = {'t_RR':[]}
 
       local_metrics_vec = []
       n_samples = len(testloader.dataset)
       re_rank_idx = []
-      for emb,scores,pos in testloader:
-        #x = 1-x # .cuda()
-        query_pos = pos['q'].detach().numpy()
-        map_positions = pos['map'].detach().numpy()
+      for i,(emb,scores,pos) in enumerate(testloader):
 
         x = emb['map'].to(self.device)
         tick = time()
@@ -83,102 +77,114 @@ class AttentionTrainer(ReRankingTrainer):
         rr_nn_ndx_vec = rr_nn_ndx.detach().cpu().numpy().astype(np.uint8)
         re_rank_idx.append(rr_nn_ndx_vec)
 
-        
-        # topk_gd_dists = scores.squeeze().detach().numpy()
-        for i,(rr_nn_ndx,topk_gd_dists) in enumerate(zip(rr_nn_ndx_vec,scores.detach().numpy())):
-          delta_rerank = query_pos[i] - map_positions[i,rr_nn_ndx,:]
-          euclid_dist_rr = np.linalg.norm(delta_rerank, axis=-1)
-          # Count true positives for different radius and NN number
-          global_metrics['t_RR'].append(t_rerank)
-          global_metrics['tp'] = {r: [global_metrics['tp'][r][nn] + (1 if (topk_gd_dists[:nn + 1] <= r).any() else 0) for nn in range(k)] for r in radius}
-          global_metrics['tp_rr'] = {r: [global_metrics['tp_rr'][r][nn] + (1 if (euclid_dist_rr[:nn + 1] <= r).any() else 0) for nn in range(k)] for r in radius}
-          global_metrics['RR'] = {r: global_metrics['RR'][r]+[next((1.0/(i+1) for i, x in enumerate(topk_gd_dists <= r) if x), 0)] for r in radius}
-          global_metrics['RR_rr'] = {r: global_metrics['RR_rr'][r]+[next((1.0/(i+1) for i, x in enumerate(euclid_dist_rr <= r) if x), 0)] for r in radius}
-
-      # Calculate mean metrics
-      global_metrics["recall"] = {r: [global_metrics['tp'][r][nn] / n_samples for nn in range(k)] for r in radius}
-      global_metrics["recall_rr"] = {r: [global_metrics['tp_rr'][r][nn] / n_samples for nn in range(k)] for r in radius}
-      global_metrics['MRR'] = {r: np.mean(np.asarray(global_metrics['RR'][r])) for r in radius}
-      global_metrics['MRR_rr'] = {r: np.mean(np.asarray(global_metrics['RR_rr'][r])) for r in radius}
-      global_metrics['mean_t_RR'] = np.mean(np.asarray(global_metrics['t_RR']))
+        global_metrics['t_RR'].append(t_rerank)
       
-      #rerank_loops = test_base_loop
       return(re_rank_idx,global_metrics)
 
-def load_cross_data(root,model_name,seq_train,seq_test):
-  train_data = RankingNewRetreivalDataset(root,model_name,seq_train)
-  #train_data = RankingMSE(root,model_name,seq_train)
-  trainloader = DataLoader(train_data,batch_size = len(train_data),shuffle=True)
-  # LOAD TEST DATA
-  test_data = RankingNewRetreivalDataset(root,model_name,seq_test)
-  #test_data = RankingMSE(root,model_name,seq_test)
-  testloader = DataLoader(test_data,batch_size = len(test_data)) #
-  return trainloader,testloader,test_data.get_max_top_cand()
+def load_cross_data(root,model_name,seq_train,batch_size=None,**argv):
+  if model_name == 'LoGGNet3D':
+    loader = LOGGNet3D_CROSS(root,model_name,seq_train)
+  else:
+    loader = CROSS(root,model_name,seq_train)
+
+  testloader  = loader.get_test_loader()
+  trainloader = loader.get_train_loader(batch_size)
+  max_cand = 25
+  return trainloader,testloader,max_cand,str(loader)
 
 
 def load_data(root,model_name,seq,train_percentage,dataset='new',batch_size=50):
-  if dataset == 'new':
-    train_data = RankingNewRetreivalDataset(root,model_name,seq)
-  elif dataset == 'AlphaQE':
-     train_data = AlphaQEData(root,model_name,seq)
-  else:
-    train_data = RankingMSE(root,model_name,seq)
-
+  # Dataset
+  train_data = AlphaQEData(root,model_name,seq)
+  # Compute split sizes
   train_size = int(len(train_data)*train_percentage)
   test_size = len(train_data) - train_size
-
+  # Split of the train and test sets
   train, test =torch.utils.data.random_split(train_data,[train_size,test_size])
-  #trainloader = DataLoader(train,batch_size = int(len(train)),shuffle=True)
+  # Dataloaders
   trainloader = DataLoader(train,batch_size = len(train),shuffle=True)
   testloader = DataLoader(test,batch_size =  len(test)) #
-
   return trainloader,testloader,train_data.get_max_top_cand(),str(train_data)
 # LOAD TTRAINING DATA
 
+
+def main(root,model_name,seq,model_fun,loss_fun,**argv):
+    torch.manual_seed(0)
+    np.random.seed(0)
+    
+    head = argv['head']
+    mha_i = argv['mha_i']
+    mlp_h = argv['mlp_h']
+    batch_size = argv['batch_size']
+  # root_data = os.path.join(root, dataset)
+    trainloader,testloader,max_top_cand,datasetname = load_cross_data(root,model_name,seq,batch_size=batch_size)
+    #===== RE-RANKING ========
+
+    model = pipeline.__dict__[model_fun](cand=25,feat_size=256,enc_n=head,mha=mha_i,mlp_features = mlp_h)
+    # model_fun = model_obj(max_top_cand,256)
+    loss = loss_fun(25)  # loss_fun = loss_obj(max_top_cand) 
+    root_save = os.path.join('results',"cross_seq10k_mlp",str(mlp_h),str(batch_size),model_name,dataset,seq)
+    #root_save = os.path.join('results',"paperv2",'final',str(loss_fun),model_name,datasetname,seq,str(train_size))
+    if not os.path.isdir(root_save):
+      os.makedirs(root_save)
+
+    experiment = os.path.join(root_save,f'{str(model)}')
+    rerank = AttentionTrainer(experiment=experiment,loss = loss, model = model,
+                              lr= 0.001,epochs = 300,lr_step=250,val_report=1,
+                              tain_report_terminal=1,device=device,max_top_cand = 25)
+
+
+    ## 
+    count = 0
+    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+    params = sum([np.prod(p.size()) for p in model_parameters])
+    print(f'\n# Model parameters: {params}\n')
+    print(params)
+      #count= count + len(parameter)
+    
+      
+    rerank.Train(trainloader,testloader)
+
 if __name__=='__main__':
+  
+  #root = "/home/deep/Dropbox/SHARE/deepisrpc/reranking/LoGG3D-Net/evaluation/10000pts/"
+  root = '/home/tiago/Dropbox/SHARE/deepisrpc/reranking/LoGG3D-Net/evaluation/10000pts/'
 
-
-  root = '/home/tiago/Dropbox/RERANKING-publication/predictions/paper/kitti/place_recognition'
+  dataset = 'kitti'
 
   train_size = 0.2
   #device = 'cuda:0'
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-  Models = ['VLAD_pointnet', 'ORCHNet_pointnet' ,'SPoC_pointnet', 'GeM_pointnet']
+  Models = ['LoGGNet3D']#,'ORCHNet_pointnet','VLAD_pointnet','SPoC_pointnet', 'GeM_pointnet']
   #Models = ['VLAD_pointnet']
   sequences = ['00','02','05','06','08']
   #sequences = ['00']
-  #model_list = ['tranformerencoder_max_fc_drop','tranformerencoder_wout_fc_drop','tranformerencoder_cnn_fc_drop',
+  model_list = ['tranformerencoder_max_fc_drop','tranformerencoder_wout_fc_drop','tranformerencoder_cnn_fc_drop']
   #              'attention_max_fc_drop','attention_wout_fc_drop','attention_cnn_fc_drop']
-  model_list = ['tranformerencoder_max_fc_drop','attention_max_fc_drop']
+  model_list = ['tranformerencoder_max_fc_drop']#'tranformerencoder_max_fc_drop']#,'attention_max_fc_drop'] 'tranformerencoder_mlpd']#
   
   #model_list = ['attention_max_fc_drop']
   #model_list = ['max_fc']
   loss_list  = [logistic_loss]#,margin_ranking_loss]
   #for train_size in range(1,9):
+  batch_sizes = [1000,500,100,50,20,10]
+  batch_sizes = [100]
   for model_obj in model_list:
     for loss_obj in loss_list:
       for model_name in Models:
-        for seq in sequences:
-          torch.manual_seed(0)
-          np.random.seed(0)
-          #seq = '02'
-          #train_size  =float(train_size)/10
-          trainloader,testloader,max_top_cand,datasetname = load_data(root,model_name,seq,train_size,'AlphaQE',batch_size=100)
-          #===== RE-RANKING ========
-
-          model_fun = pipeline.__dict__[model_obj](cand=max_top_cand,feat_size=256)
-          # model_fun = model_obj(max_top_cand,256)
-          loss_fun = loss_obj(max_top_cand)
-          root_save = os.path.join('results',"paperv2",'final',str(loss_fun),model_name,datasetname,seq,str(train_size))
-          #root_save = os.path.join('results',"paperv2",'final',str(loss_fun),model_name,datasetname,seq,str(train_size))
-          if not os.path.isdir(root_save):
-            os.makedirs(root_save)
-
-          experiment = os.path.join(root_save,f'{str(model_fun)}')
-          rerank = AttentionTrainer(experiment=experiment,loss = loss_fun, model = model_fun,lr= 0.001,epochs = 200,lr_step=250,val_report=1,tain_report_terminal=1,device=device,max_top_cand = max_top_cand)
-
-          rerank.Train(trainloader,testloader)
+        for batch_size in batch_sizes:
+          for seq in sequences:
+            for mha_i in [1]:#,4,8]:
+              for head in [1]:
+                
+                
+                mlp_h=512
+                #root_data = root
+                main(root,model_name,seq,
+                      model_obj,loss_obj,
+                      batch_size=batch_size, 
+                      head=head,mlp_h=mlp_h,mha_i=mha_i)
 
 
 

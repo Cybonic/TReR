@@ -34,6 +34,8 @@ def tranformerencoder_wout(**argv):
 def tranformerencoder_cnn(**argv):
     return Cnn(TranformerEncoder(**argv))
 
+def tranformerencoder_mlpd(**argv):
+    return MLPD(TranformerEncoder(**argv),)
 
 def attention_max(**argv):
     return Max(AttentionRanking(**argv))
@@ -53,6 +55,8 @@ def wout(**argv):
 def max(**argv):
     return Max(**argv)
 
+def mlp(**argv):
+    return MLPD(**argv)
 
 def cnn_fc(**argv):
     return FC_Drop(Cnn(**argv),**argv)
@@ -62,3 +66,4 @@ def wout_fc(**argv):
 
 def max_fc(**argv):
     return FC_Drop(Max(**argv),**argv)
+

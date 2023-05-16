@@ -23,6 +23,7 @@ class EncoderLayer(nn.Module):
         super().__init__()
         #self.mha = MultiHeadAttention(d_model, num_heads, p=0.1)
         self.mha = torch.nn.MultiheadAttention(d_model, num_heads,p,batch_first=True)
+        conv_hidden_dim = d_model
         self.cnn = CNN(d_model, conv_hidden_dim, p)
         self.layernorm1 = nn.LayerNorm(normalized_shape=d_model, eps=1e-6)
         self.layernorm2 = nn.LayerNorm(normalized_shape=d_model, eps=1e-6)
@@ -40,12 +41,12 @@ class EncoderLayer(nn.Module):
 
 
 class TranformerEncoder(torch.nn.Module):
-  def __init__(self,cand=35,feat_size = 256):
+  def __init__(self,cand=35,feat_size = 256,enc_n=1,mha=1,mlp_features=256):
     super().__init__()
-    self.heads = 1
+    self.heads = mha
     self.classifier = torch.nn.Conv1d(256, 1, 1)
-    layer = [EncoderLayer(feat_size,self.heads,cand)]
-    self.enc_n = 1
+    layer = [EncoderLayer(feat_size,self.heads,mlp_features)]
+    self.enc_n = enc_n
     for i in range(self.enc_n):
       layer += layer
 

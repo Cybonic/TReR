@@ -11,7 +11,7 @@ from utils import retrieve_eval
 
 from torch.utils.data import DataLoader
 from dataloaders.rankingdata import RankingDataset
-
+from utils import eval_place
 
 
 # =====================================================
@@ -40,11 +40,11 @@ class ReRankingTrainer(nn.Module):
     top_mnt = 5
     
     try:
-      btain_base_loop,base_sim =  trainloader.dataset.dataset.get_base_loops()
-      train_targets = np.array(trainloader.dataset.dataset.get_targets())
-      train_idx =  np.array(trainloader.dataset.indices)
+      tain_base_loop,base_sim =  trainloader.dataset.get_base_loops()
+      train_targets = trainloader.dataset.get_targets()
+      train_idx = trainloader.dataset.indices
       self.train_targets = train_targets[train_idx]
-      train_base_loop = btain_base_loop[train_idx]
+      train_base_loop = tain_base_loop[train_idx]
 
       # Test
       test_indices = np.array(testloader.dataset.indices)
@@ -55,33 +55,37 @@ class ReRankingTrainer(nn.Module):
 
       test_relevance = testloader.dataset.dataset.get_gt_relevance()
       self.test_relevance = test_relevance[test_indices]
-      
+
     except:
-      base_loop,base_sim =  trainloader.dataset.get_base_loops()
-      targets =trainloader.dataset.get_targets()
+      train_base_loop,base_sim =  trainloader.dataset.get_base_loops()
+      train_targets =trainloader.dataset.get_targets()
+      
       test_base_loop,test_base_sim =  testloader.dataset.get_base_loops()
       test_targets = testloader.dataset.get_targets() 
 
+      test_queries = testloader.dataset.queries_buf
+      test_descriptors = testloader.dataset.get_descriptors()
+      test_poses = testloader.dataset.poses_buf
+
     # TRAIN PERFORMANCE
-    base_perfm = retrieve_eval(train_base_loop,self.train_targets,top=25)
+    
+    base_perfm = retrieve_eval(train_base_loop,train_targets,top=25)
 
     print("\n========\n")
     print(base_perfm)
     print("\n========\n")
     # TEST PERFORMANCE
-    test_perf_record = {}
-    for i in self.top_cand:
-      rerank_perfm = retrieve_eval(test_base_loop,test_targets,top=i)
-      test_perf_record[i]=rerank_perfm
 
-    # test_base_perfm = retrieve_eval(test_base_loop,test_targets,top=2)
+    base_global_perf = eval_place(test_queries,test_descriptors,test_poses)
+
+    print(base_global_perf['recall'])
 
     best_perf_record = []
     for epoch in range(self.epochs):
       
       loss,re_rank_idx  = self.train_epoch(epoch,trainloader)
       rerank_loops = np.array([loops[l] for loops,l in zip(train_base_loop,re_rank_idx)])
-      train_rerank_perfm  = retrieve_eval(rerank_loops,self.train_targets ,top=top_mnt)
+      train_rerank_perfm  = retrieve_eval(rerank_loops,train_targets ,top=top_mnt)
 
       value = np.round(np.mean(loss),3)
       loss_log.append(value)
@@ -95,23 +99,25 @@ class ReRankingTrainer(nn.Module):
       # Val 
       if epoch % self.val_report == 0:
         
-        re_rank_idx,standard_metrics = self.predict(testloader)
-        rerank_loops = np.array([loops[l] for loops,l in zip(test_base_loop,re_rank_idx)])
-        rerank_perfm = retrieve_eval(rerank_loops,test_targets,top=top_mnt)
-       
+        re_rank_idx,time = self.predict(testloader)
+        #rerank_loops = np.array([loops[l] for loops,l in zip(test_base_loop,re_rank_idx)])
+        
+        global_perf  = eval_place(test_queries,test_descriptors,test_poses,reranking = re_rank_idx[0])
+        #rerank_perfm = retrieve_eval(rerank_loops,test_targets,top=top_mnt)
+        global_perf['t_RR'] = time['t_RR']
         #delta = standard_metrics['recall_rr'][25][top_mnt-1] - test_perf_record[top_mnt]['recall']
-        rerank_perfm = standard_metrics['recall_rr'][25][top_mnt-1]
-        delta = standard_metrics['recall_rr'][25][top_mnt-1] - standard_metrics['recall'][25][top_mnt-1]
+        rerank_perfm = global_perf['recall_rr'][25][top_mnt-1]
+        delta = global_perf['recall_rr'][25][top_mnt-1] - global_perf['recall'][25][top_mnt-1]
         print(f"\nReRank Recall: {round(rerank_perfm,5)} | delta: {round(delta,5)} ")
 
         if rerank_perfm>old_perfm:
           old_perfm = rerank_perfm
           perf_record = {}
 
-          for i in self.top_cand:
-            perf_record[i] = retrieve_eval(rerank_loops,test_targets,top=i)
+          #for i in self.top_cand:
+          #  perf_record[i] = retrieve_eval(rerank_loops,test_targets,top=i)
 
-          best_perf_record = standard_metrics
+          best_perf_record = global_perf
           
           print("\nBest performance\n")
           self.save_checkpoint(epoch,best_perf_record,self.experiment,top_mnt)
@@ -122,6 +128,7 @@ class ReRankingTrainer(nn.Module):
     print("\n ******************Best*********************\n")
     recall = np.round(best_perf_record['recall'][25][top_mnt-1],2)
     recall_rr = np.round(best_perf_record['recall_rr'][25][top_mnt-1],2)
+    
     print(f"BaseLine  {recall}")
     print(f"Reranking {recall_rr}")
 
@@ -145,28 +152,22 @@ class ReRankingTrainer(nn.Module):
     if file == None:
       raise NameError    #file = self.results_file # Internal File name 
     
+    decimal_res = 3
     metrics = list(results.keys())[5:]
-    recall= []
-    for tag in metrics[:2]:
-      v = results[tag][25]
-      recall.append(v)
-    
-    recall = np.transpose(np.array(recall))
-    recall = np.round(recall,2)
+    recall= np.round(np.transpose(np.array(results['recall'][25])),decimal_res).reshape(-1,1)
+    recall_rr= np.round(np.transpose(np.array(results['recall_rr'][25])),decimal_res).reshape(-1,1)
 
     scores = np.zeros((recall.shape[0],3))
-    scores[0,0]= np.round(results['MRR'][25],2)
-    scores[0,1]= np.round(results['MRR_rr'][25],2)
+    scores[0,]
+    scores[0,0]= np.round(results['MRR'][25],decimal_res)
+    scores[0,1]= np.round(results['MRR_rr'][25],decimal_res)
     scores[0,2]= results['mean_t_RR']
-    scores = np.hstack((recall,scores,))
-    # Check if the results were generated
- 
+    scores = np.concatenate((recall,recall_rr,scores,),axis=1)
 
-    colum = metrics
     #rows = np.concatenate((top_cand,array),axis=1)
     df = pd.DataFrame(scores,columns = metrics)
     #file_results = file + '_' + 'best_model.csv'
-    best = np.round(results['recall_rr'][25][top-1],2)
+    best = np.round(results['recall_rr'][25][top-1],decimal_res)
     checkpoint_dir = ''
     filename = os.path.join(checkpoint_dir,f'{file}-{str(best)}.csv')
     df.to_csv(filename)

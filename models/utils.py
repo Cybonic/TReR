@@ -2,6 +2,32 @@
 import torch
 import torch.nn as nn
 
+class MLPD(nn.Module):
+    def __init__(self,model=None, in_dim=256, h_dim=256, out_dim=1, p=0.01):
+        super().__init__()
+        if model == None:
+          self.model = ''
+        else:
+          self.model = model
+    
+        self.k1convL1 = nn.Linear(in_dim,    h_dim)
+        self.k1convL2 = nn.Linear(h_dim, out_dim)
+        self.activation = nn.ReLU()
+        self.drop = nn.Dropout(0.1)
+
+    def forward(self, x):
+        if self.model != '':
+          x = self.model(x) # outputs B,C,F
+              
+        x = self.k1convL1(x)
+        x = self.activation(x)
+        x = self.k1convL2(x)
+        x = self.drop(x)
+        return x.squeeze()
+    
+    def __str__(self):
+      return f"{str(self.model)}_wout"
+
 class Wout(torch.nn.Module):
   def __init__(self,model=None,**argv):
     super().__init__()
@@ -73,10 +99,10 @@ class FC_Drop(torch.nn.Module):
     super().__init__() 
 
     self.model = model
-    fc_drop = [nn.LazyLinear(cand),
-                    nn.ReLU(),
-                    nn.Dropout(0.1)
-                    ]
+    fc_drop = [ nn.LazyLinear(cand),
+                nn.ReLU(),
+                nn.Dropout(0.1)
+                ]
       
     self.fc_drop = nn.Sequential(*fc_drop)
   

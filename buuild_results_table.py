@@ -104,13 +104,13 @@ def model_wise_baseline_scores(files,cand=[1,5,10]):
         best_model.append(mm)
     return(best_model,best_score)
 
-def model_wise_mean_scores(files,cand=[1,5,10]):
+def model_wise_mean_scores(files,cand=[1,5,10],metric='recall_rr'):
     
     # Parse files based on the model name
     model_list = []
     score_vec  = []
     for file in files:
-        model,score = parse_file_scores(file,cand)
+        model,score = parse_file_scores(file,cand,metric)
         #model,score = parse_file_diff(file,cand)
         model_list.append(model)
         score_vec.append(score)
@@ -120,6 +120,7 @@ def model_wise_mean_scores(files,cand=[1,5,10]):
     best_score = []
     best_model = []
     for mm in un_m:
+        #print(mm)
         compare = [i for i,mi in enumerate(model_list) if mi == mm]
         ms = np.array(score_vec)[compare]
         best_score.append(ms)
@@ -178,11 +179,9 @@ def results_to_pandas(files,target):
     import pandas as pd
     for key,file in files.items():
         print(key)
-        unique_models,scores = model_wise_mean_scores(file,[1,5,10,15])
-        idx = np.where(target == unique_models)
+        unique_models,scores = model_wise_mean_scores(file,[1,5,10],metric='recall_rr')
         for unique_model, score in zip(unique_models,scores):
             if unique_model.startswith(target):
-                print(unique_model)
                 print(score)
 
 
@@ -191,13 +190,13 @@ if __name__ == '__main__':
     parser.add_argument(
       '--root', '-f',
       type=str,
-      default = "results/final/**", # logistic_loss prob_rank_loss "results/margin_rank_loss/ablation/**"
+      default = "results/cross_seq_transformer_n_enc_study/**", # logistic_loss prob_rank_loss "results/margin_rank_loss/ablation/**"
       required=False,
       help='Dataset to train with. No Default',
     )
     FLAGS, unparsed = parser.parse_known_args()
     
-    files_struct = {'00':[],'02':[],'05':[],'06':[],'08':[]}
+    files_struct = {'08':[]}#,'02':[],'05':[],'06':[],'08':[]}
     files = get_all_files(FLAGS.root)
 
     # model_struct = {'ORCHNet_pointnet':[],'VLAD_pointnet':[],'SPoC_pointnet':[],'GeM_pointnet':[]}
@@ -210,16 +209,19 @@ if __name__ == '__main__':
 
     #exit()
     
-    model_struct = {'VLAD_pointnet':[],'GeM_pointnet':[],'ORCHNet_pointnet':[],'SPoC_pointnet':[]}
+    #model_struct = {'VLAD_pointnet':[],'GeM_pointnet':[],'ORCHNet_pointnet':[],'SPoC_pointnet':[]}
+    model_struct = {'GeM_pointnet':[]}
     files = parse_file_struct(files,model_struct)
     
     for key, values in files.items():
         print("\n==================================")
         print(key)
+        #files_struct = {'00':[],'02':[],'05':[],'06':[],'08':[]}
         files_struct = {'00':[],'02':[],'05':[],'06':[],'08':[]}
         file_seq = parse_file_struct(values,files_struct)
-        
-        results_to_pandas(file_seq,'TranformerEncoder_BFT_x1_headx1_max_fc_drop')
+        # TranformerEncoder_BFT_x1_headx1_max_fc_drop
+        results_to_pandas(file_seq,'TranformerEncoder')
+    
     
     for mm, values in zip(unique_models,scores):
 

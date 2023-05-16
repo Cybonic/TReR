@@ -3,7 +3,7 @@ from .loss_utils import pairwise_permutations
 
 
 class logistic_loss:
-  def __init__(self,cand=37):
+  def __init__(self,cand=25):
     self.x1_perm,self.x2_perm = pairwise_permutations(cand)
   
   def __call__(self,y_pred,y_true):
