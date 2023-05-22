@@ -37,6 +37,7 @@ class AlphaQEData():
     target_relevance = data['p']['old']['ed']
     self.descriptors = data['d']
     queries = data['q']
+    self.queries_idx = data['q'] # Query idx
 
     self.base_loops,self.base_relevance = comp_loops(data['f']['ed'], data['q'],window=500,max_top_cand=self.max_top_cand )
     
@@ -47,7 +48,10 @@ class AlphaQEData():
     self.table = compt_y_table(self.base_target_relevance)
 
   def __len__(self):
-    return len(self.base_query_descriptors) 
+    return len(self.base_query_descriptors)
+  
+  def get_queries(self):
+    return self.queries_idx
   
   def get_gt_relevance(self):
     return self.base_target_relevance
@@ -120,13 +124,18 @@ class cros_seq_dataset():
     map_emb_vec = []
     base_loops_buf = []
     base_relevance_buf = []
+    queries_buf = []
+    descriptors_buf = []
     table_buf = []
-    
+    poses_buf = []
+    sum_n_frames = 0
     for seq in sequences:
       data = AlphaQEData(root,model,seq)
-
+      queries = np.array(data.get_queries())
+      queries_buf.extend(sum_n_frames+ queries)
       base_loops_buf.extend(data.base_loops)
       base_relevance_buf.extend(data.base_relevance)
+      descriptors_buf.extend(data.get_descriptors())
 
       query_pos = data.query_pos
       query_pos_vec.extend(query_pos)
@@ -141,10 +150,12 @@ class cros_seq_dataset():
       map_emb = data.base_descriptors
       map_emb_vec.extend(map_emb)
       target_buf.extend(data.targets)
+      poses_buf.extend(data.get_pose())
     
     self.base_loops_buf = np.array(base_loops_buf)
+    self.descriptors = np.array(descriptors_buf)
     self.base_relevance_buf = np.array(base_relevance_buf)
-
+    self.queries_buf=np.array(queries_buf)
     self.query_pos_vec = np.array(query_pos_vec)
     self.map_pos_vec = np.array(map_pos_vec)
     self.map_emb_vec = np.array(map_emb_vec)
@@ -152,6 +163,7 @@ class cros_seq_dataset():
     self.query_emb_vec = np.array(query_emb_vec)
     self.scores_vec = np.array(scores_vec)
     self.table_buf = np.array(table_buf)
+    self.poses_buf = np.array(poses_buf)
     
 
   def __len__(self):
@@ -177,6 +189,9 @@ class cros_seq_dataset():
   
   def get_targets(self):
     return self.target_buf
+
+  def get_descriptors(self):
+    return self.descriptors
   
 
 

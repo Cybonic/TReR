@@ -1,9 +1,6 @@
 
-import torch
-import torch.nn as nn
 from .utils import *
 from .TranformerEncoder import *
-from .AttentionRanking import *
 
 def tranformerencoder_max_fc_drop(**argv):
     return FC_Drop(tranformerencoder_max(**argv),**argv)

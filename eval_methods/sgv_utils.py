@@ -79,10 +79,10 @@ def sgv_parallel(src_keypts, tgt_keypts, src_features, tgt_features, d_thresh=5.
 
 
 def sgv_fn(query_keypts,query_feats, tgt_lfs, tgt_kps, d_thresh=5.0):
-    src_keypts = torch.tensor(query_keypts).unsqueeze(0)#.cuda()
-    src_features = torch.tensor(query_feats).unsqueeze(0)#.cuda()
-    tgt_lfs = torch.tensor(tgt_lfs)#.cuda()
-    tgt_kps = torch.tensor(tgt_kps)#.cuda()
+    src_keypts = torch.tensor(query_keypts).unsqueeze(0).cuda()
+    src_features = torch.tensor(query_feats).unsqueeze(0).cuda()
+    tgt_lfs = torch.tensor(tgt_lfs).cuda()
+    tgt_kps = torch.tensor(tgt_kps).cuda()
 
     conf_list = sgv_parallel(src_keypts,tgt_kps , src_features, tgt_lfs , d_thresh=d_thresh)
 

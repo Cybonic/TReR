@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import os
 import numpy as np
 
-from utils import retrieve_eval
+from utils import retrieve_eval,save_results_csv2
 
 from torch.utils.data import DataLoader
 from dataloaders.rankingdata import RankingDataset
@@ -104,7 +104,7 @@ class ReRankingTrainer(nn.Module):
         
         global_perf  = eval_place(test_queries,test_descriptors,test_poses,reranking = re_rank_idx[0])
         #rerank_perfm = retrieve_eval(rerank_loops,test_targets,top=top_mnt)
-        global_perf['t_RR'] = time['t_RR']
+        global_perf['mean_t_RR'] = np.mean(time['t_RR'])
         #delta = standard_metrics['recall_rr'][25][top_mnt-1] - test_perf_record[top_mnt]['recall']
         rerank_perfm = global_perf['recall_rr'][25][top_mnt-1]
         delta = global_perf['recall_rr'][25][top_mnt-1] - global_perf['recall'][25][top_mnt-1]
@@ -147,30 +147,7 @@ class ReRankingTrainer(nn.Module):
     print("Saving current best: best_model.pth")
 
 
-  def save_results_csv2(self,file,results,top,**argv):
-    import pandas as pd
-    if file == None:
-      raise NameError    #file = self.results_file # Internal File name 
-    
-    decimal_res = 3
-    metrics = list(results.keys())[5:]
-    recall= np.round(np.transpose(np.array(results['recall'][25])),decimal_res).reshape(-1,1)
-    recall_rr= np.round(np.transpose(np.array(results['recall_rr'][25])),decimal_res).reshape(-1,1)
-
-    scores = np.zeros((recall.shape[0],3))
-    scores[0,]
-    scores[0,0]= np.round(results['MRR'][25],decimal_res)
-    scores[0,1]= np.round(results['MRR_rr'][25],decimal_res)
-    scores[0,2]= results['mean_t_RR']
-    scores = np.concatenate((recall,recall_rr,scores,),axis=1)
-
-    #rows = np.concatenate((top_cand,array),axis=1)
-    df = pd.DataFrame(scores,columns = metrics)
-    #file_results = file + '_' + 'best_model.csv'
-    best = np.round(results['recall_rr'][25][top-1],decimal_res)
-    checkpoint_dir = ''
-    filename = os.path.join(checkpoint_dir,f'{file}-{str(best)}.csv')
-    df.to_csv(filename)
+  
 
 
   def save_results_csv(self,file,results,base_results,top):

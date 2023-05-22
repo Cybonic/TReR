@@ -1,6 +1,31 @@
 
 import numpy as np
 import torch
+import os
+
+def save_results_csv2(self,file,results,top,**argv):
+    import pandas as pd
+    if file == None:
+      raise NameError    #file = self.results_file # Internal File name 
+    
+    decimal_res = 3
+    metrics = ['recall','recall_rr','MRR','MRR_rr','mean_t_RR'] # list(results.keys())[5:]
+    recall= np.round(np.transpose(np.array(results['recall'][25])),decimal_res).reshape(-1,1)
+    recall_rr= np.round(np.transpose(np.array(results['recall_rr'][25])),decimal_res).reshape(-1,1)
+
+    scores = np.zeros((recall.shape[0],3))
+    scores[0,]
+    scores[0,0]= np.round(results['MRR'][25],decimal_res)
+    scores[0,1]= np.round(results['MRR_rr'][25],decimal_res)
+    scores[0,2]= results['mean_t_RR']
+    scores = np.concatenate((recall,recall_rr,scores),axis=1)
+
+    df = pd.DataFrame(scores,columns = metrics)
+    best = np.round(results['recall_rr'][25][top-1],decimal_res)
+    checkpoint_dir = ''
+    filename = os.path.join(checkpoint_dir,f'{file}-{str(best)}.csv')
+    df.to_csv(filename)
+
 
 
 
@@ -61,10 +86,14 @@ def eval_place(queries,descriptrs,poses,k=25,radius=[25],reranking = None):
   global_metrics['mean_t_RR'] = np.mean(np.asarray(global_metrics['t_RR']))
   return global_metrics
 
+
+
 def comp_pair_permutations(n_samples):
     combo_idx = torch.arange(n_samples)
     permutation = torch.from_numpy(np.array([np.array([a, b]) for idx, a in enumerate(combo_idx) for b in combo_idx[idx + 1:]]))
     return permutation[:,0],permutation[:,1]
+
+
 
 def comp_loops(sim_map,queries,window=500,max_top_cand=25):
   loop_cand = []

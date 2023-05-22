@@ -1,6 +1,6 @@
 # This script is adapted from: https://github.com/jac99/Egonn/blob/main/eval/evaluate.py
 # This demo script evaluates the EgoNN global and local features for the Place Recognition task on KITTI360 09.
-# Outputs results for place recognition both with and without re-ranking using RANSAC-GV.
+# Outputs results for place recognition both with and without re-ranking using SpectralGV.
 
 import argparse
 import numpy as np
@@ -13,7 +13,10 @@ from time import time
 import pickle
 import copy
 import torch
-import open3d as o3d
+
+from dataloaders import logg3d
+
+from eval_methods.sgv_utils import *
 
 print('\n' + ' '.join([sys.executable] + sys.argv))
 
@@ -112,34 +115,45 @@ class EvaluatorDemo:
         model.eval()
 
 
-class MetLocEvaluatorDemo(EvaluatorDemo):
+class MetLocEvaluatorDemo():
     def __init__(self, dataset_type: str, eval_set_pickle: str, device: str,
                  radius: List[float], k: int = 20):
-        super().__init__(dataset_type, eval_set_pickle, device, radius, k)
+        #super().__init__(dataset_type, eval_set_pickle, device, radius, k)
         self.n_samples = None
+        self.radius = [1,5,10,25]
+        self.k = 25
+
+
 
     def model2eval(self, models):
         # This method may be overloaded when model is a tuple consisting of a few models (as in Disco)
         [model.eval() for model in models]
 
-    def evaluate(self):
+    def evaluate(self,sequnce):
+        root = '/home/deep/Dropbox/SHARE/deepisrpc/reranking/LoGG3D-Net/evaluation/10000pts'
+        
+        dataset = logg3d.load_data(root,sequnce)
+        
+        poses = dataset['p']
+        descriptors = dataset['d'].squeeze()
+        features = dataset['f']
+        keypts = dataset['k']
+        queries = dataset['q']
+        database = dataset['m']
+        query_pose = poses[queries]
+        # =======================================================================================
+        
+        query_embeddings = [descriptors[idx] for idx in queries]
+        
+        n_frames = descriptors.shape[0]
+        whole_map = np.arange(n_frames)
 
-        save_path = os.path.dirname(__file__) + '/demo_pickles/ego_nn_' + self.dataset_type + '/'
 
-        with open(save_path + 'query_embeddings.pickle', 'rb') as handle:
-            query_embeddings = pickle.load(handle)
-        with open(save_path + 'local_query_embeddings.pickle', 'rb') as handle:
-            local_query_embeddings = pickle.load(handle)
+        local_query_embeddings = [features[idx] for idx in queries]
+        local_query_keypts =  [keypts[idx] for idx in queries]
 
-        with open(save_path + 'map_embeddings.pickle', 'rb') as handle:
-            map_embeddings = pickle.load(handle)
-        with open(save_path + 'local_map_embeddings.pickle', 'rb') as handle:
-            local_map_embeddings = pickle.load(handle)
+        query_positions = poses[queries]# # Nquery x 2
 
-        local_map_embeddings_keypoints = torch.stack([lme['keypoints'] for lme in local_map_embeddings])
-        local_map_embeddings_features = torch.stack([lme['features'] for lme in local_map_embeddings])
-        map_positions = self.eval_set.get_map_positions() # Nmap x 2
-        query_positions = self.eval_set.get_query_positions() # Nquery x 2
 
         if self.n_samples is None or len(query_embeddings) <= self.n_samples:
             query_indexes = list(range(len(query_embeddings)))
@@ -149,16 +163,29 @@ class MetLocEvaluatorDemo(EvaluatorDemo):
 
 
         # Dictionary to store the number of true positives (for global desc. metrics) for different radius and NN number
-        global_metrics = {'tp': {r: [0] * self.k for r in self.radius}}
-        global_metrics['tp_rr'] = {r: [0] * self.k for r in self.radius}
-        global_metrics['RR'] = {r: [] for r in self.radius}
-        global_metrics['RR_rr'] = {r: [] for r in self.radius}
-        global_metrics['t_RR'] = []
+        #global_metrics = {'tp': {r: [0] * self.k for r in self.radius}}
+        #global_metrics['tp_rr'] = {r: [0] * self.k for r in self.radius}
+        #global_metrics['RR'] = {r: [] for r in self.radius}
+        #global_metrics['RR_rr'] = {r: [] for r in self.radius}
+        global_metrics = {'t_RR':[]}#
 
         for query_ndx in tqdm.tqdm(query_indexes):
+            
+            q = queries[query_ndx]
+            map_idx = np.arange(q-50) # generate indices 
+            filtered_map_idx = whole_map[map_idx]
+            
+            map_positions = poses[filtered_map_idx]
+            map_embeddings = descriptors[filtered_map_idx]
+
+            local_map_embeddings_keypoints = keypts[filtered_map_idx]
+            local_map_embeddings_features = features[filtered_map_idx]
+        
+            # print(max(queries))
+
             # Check if the query element has a true match within each radius
-            query_pos = query_positions[query_ndx]
-            query_pose = self.eval_set.query_set[query_ndx].pose
+            query_pos = query_positions[query_ndx].reshape(-1,3)
+            #query_pose =query_positions[query_ndx]
 
             # Nearest neighbour search in the embedding space
             query_embedding = query_embeddings[query_ndx]
@@ -174,59 +201,39 @@ class MetLocEvaluatorDemo(EvaluatorDemo):
 
             # Re-Ranking:
             topk = min(self.k,len(nn_ndx))
-            fitness_list = np.zeros(topk)
             tick = time()
-            for k in range(topk):
-                k_id = nn_ndx[k]
-
-                T_estimated, inliers, conf_val = self.ransac_fn(local_query_embeddings[query_ndx],
-                                                    local_map_embeddings[k_id], 128)
-
-                # inlier_ratio = self.cal_inlier_ratio(local_query_embeddings[query_ndx],
-                #                                      local_map_embeddings[k_id], T_estimated)
-                # o3d fitness is already the inlier ratio http://www.open3d.org/docs/release/python_api/open3d.pipelines.registration.RegistrationResult.html
-                
-                fitness_list[k] = conf_val
-
+            candidate_lfs = local_map_embeddings_features[nn_ndx]
+            candidate_kps = local_map_embeddings_keypoints[nn_ndx]
+            
+            fitness_list = sgv_fn(local_query_keypts[query_ndx],local_query_embeddings[query_ndx], candidate_lfs, candidate_kps,d_thresh=0.4)
+            topk_rerank = np.flip(np.asarray(fitness_list).argsort())
             topk_rerank = np.flip(np.asarray(fitness_list).argsort())
             topk_rerank_inds = copy.deepcopy(nn_ndx)
             topk_rerank_inds[:topk] = nn_ndx[topk_rerank]
-            # topk_rerank_inds = nn_ndx[topk_rerank]
             t_rerank = time() - tick
             global_metrics['t_RR'].append(t_rerank)
-
+            print(t_rerank)
             delta_rerank = query_pos - map_positions[topk_rerank_inds]
             euclid_dist_rr = np.linalg.norm(delta_rerank, axis=1)
                 
 
             # Count true positives for different radius and NN number
-            global_metrics['tp'] = {r: [global_metrics['tp'][r][nn] + (1 if (euclid_dist[:nn + 1] <= r).any() else 0) for nn in range(self.k)] for r in self.radius}
-            global_metrics['tp_rr'] = {r: [global_metrics['tp_rr'][r][nn] + (1 if (euclid_dist_rr[:nn + 1] <= r).any() else 0) for nn in range(self.k)] for r in self.radius}
-            global_metrics['RR'] = {r: global_metrics['RR'][r]+[next((1.0/(i+1) for i, x in enumerate(euclid_dist <= r) if x), 0)] for r in self.radius}
-            global_metrics['RR_rr'] = {r: global_metrics['RR_rr'][r]+[next((1.0/(i+1) for i, x in enumerate(euclid_dist_rr <= r) if x), 0)] for r in self.radius}
+            #global_metrics['tp'] = {r: [global_metrics['tp'][r][nn] + (1 if (euclid_dist[:nn + 1] <= r).any() else 0) for nn in range(self.k)] for r in self.radius}
+            #global_metrics['tp_rr'] = {r: [global_metrics['tp_rr'][r][nn] + (1 if (euclid_dist_rr[:nn + 1] <= r).any() else 0) for nn in range(self.k)] for r in self.radius}
+            #global_metrics['RR'] = {r: global_metrics['RR'][r]+[next((1.0/(i+1) for i, x in enumerate(euclid_dist <= r) if x), 0)] for r in self.radius}
+            #global_metrics['RR_rr'] = {r: global_metrics['RR_rr'][r]+[next((1.0/(i+1) for i, x in enumerate(euclid_dist_rr <= r) if x), 0)] for r in self.radius}
 
 
         # Calculate mean metrics
-        global_metrics["recall"] = {r: [global_metrics['tp'][r][nn] / self.n_samples for nn in range(self.k)] for r in self.radius}
-        global_metrics["recall_rr"] = {r: [global_metrics['tp_rr'][r][nn] / self.n_samples for nn in range(self.k)] for r in self.radius}
-        global_metrics['MRR'] = {r: np.mean(np.asarray(global_metrics['RR'][r])) for r in self.radius}
-        global_metrics['MRR_rr'] = {r: np.mean(np.asarray(global_metrics['RR_rr'][r])) for r in self.radius}
+        #global_metrics["recall"] = {r: [global_metrics['tp'][r][nn] / self.n_samples for nn in range(self.k)] for r in self.radius}
+        #global_metrics["recall_rr"] = {r: [global_metrics['tp_rr'][r][nn] / self.n_samples for nn in range(self.k)] for r in self.radius}
+        #global_metrics['MRR'] = {r: np.mean(np.asarray(global_metrics['RR'][r])) for r in self.radius}
+        #global_metrics['MRR_rr'] = {r: np.mean(np.asarray(global_metrics['RR_rr'][r])) for r in self.radius}
         global_metrics['mean_t_RR'] = np.mean(np.asarray(global_metrics['t_RR']))
 
 
         return global_metrics
 
-    def ransac_fn(self, query_keypoints, candidate_keypoints, n_k):
-        """
-
-        Returns fitness score and estimated transforms
-        Estimation using Open3d 6dof ransac based on feature matching.
-        """
-        kp1 = query_keypoints['keypoints'][:n_k]
-        kp2 = candidate_keypoints['keypoints'][:n_k]
-        ransac_result = get_ransac_result(query_keypoints['features'][:n_k], candidate_keypoints['features'][:n_k],
-                                          kp1, kp2)
-        return ransac_result.transformation, len(ransac_result.correspondence_set), ransac_result.fitness
 
     def print_results(self, global_metrics):
         # Global descriptor results are saved with the last n_k entry
@@ -251,50 +258,15 @@ class MetLocEvaluatorDemo(EvaluatorDemo):
             print('MRR: {:0.1f}'.format(global_metrics['MRR_rr'][r_rr]*100.0))
         print('Re-Ranking Time: {:0.3f}'.format(1000.0 *global_metrics['mean_t_RR']))
 
-def make_open3d_feature(data, dim, npts):
-    feature = o3d.pipelines.registration.Feature()
-    feature.resize(dim, npts)
-    if not isinstance(data, np.ndarray):
-        feature.data = data.cpu().numpy().astype('d').transpose()
-    else:
-        feature.data = data.astype('d').transpose()
-    return feature
 
-
-def make_open3d_point_cloud(xyz, color=None):
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(xyz)
-    if color is not None:
-        pcd.colors = o3d.utility.Vector3dVector(color)
-    return pcd
-
-def get_ransac_result(feat1, feat2, kp1, kp2, ransac_dist_th=0.5, ransac_max_it=10000):
-    feature_dim = feat1.shape[1]
-    pcd_feat1 = make_open3d_feature(feat1, feature_dim, feat1.shape[0])
-    pcd_feat2 = make_open3d_feature(feat2, feature_dim, feat2.shape[0])
-    pcd_coord1 = make_open3d_point_cloud(kp1.numpy())
-    pcd_coord2 = make_open3d_point_cloud(kp2.numpy())
-
-    # ransac based eval
-    ransac_result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
-        pcd_coord1, pcd_coord2, pcd_feat1, pcd_feat2,
-        mutual_filter=True,
-        max_correspondence_distance=ransac_dist_th,
-        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
-        ransac_n=3,
-        checkers=[o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.8),
-                  o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(ransac_dist_th)],
-        criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(ransac_max_it, 0.999))
-
-    return ransac_result
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Evaluate MinkLoc model')
-    parser.add_argument('--dataset_type', type=str, required=False, default='kitti360')
+    parser.add_argument('--dataset_type', type=str, required=False, default='kitti')
     parser.add_argument('--eval_set', type=str, required=False, default='kitti360_09_3.0_eval.pickle', help='File name')
     parser.add_argument('--radius', type=float, nargs='+', default=[5, 20], help='True Positive thresholds in meters')
-    parser.add_argument('--n_topk', type=int, default=20, help='Number of keypoints to calculate repeatability')
+    parser.add_argument('--n_topk', type=int, default=2, help='Number of keypoints to calculate repeatability')
     args = parser.parse_args()
 
     print(f'Dataset type: {args.dataset_type}')
@@ -308,7 +280,8 @@ if __name__ == "__main__":
         device = "cpu"
     print('Device: {}'.format(device))
 
-
+    
     evaluator = MetLocEvaluatorDemo(args.dataset_type, args.eval_set, device, radius=args.radius, k=args.n_topk)
-    global_metrics= evaluator.evaluate()
+    global_metrics= evaluator.evaluate('00')
+    print(global_metrics)
     evaluator.print_results(global_metrics)

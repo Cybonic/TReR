@@ -17,8 +17,6 @@ from time import time
 
 from losses.logistic_loss import logistic_loss
 
-
-
 from models import pipeline
 # =====================================================
 
@@ -57,10 +55,7 @@ class AttentionTrainer(ReRankingTrainer):
   def predict(self,testloader,radius=[25]):
       
       self.model.eval()
-
-
       k = self.max_top_cand
-    
       global_metrics = {'t_RR':[]}
 
       local_metrics_vec = []
@@ -69,15 +64,16 @@ class AttentionTrainer(ReRankingTrainer):
       for i,(emb,scores,pos) in enumerate(testloader):
 
         x = emb['map'].to(self.device)
+        batch_size = x.shape[0]
         tick = time()
         values = self.model(x)
         rr_nn_ndx = torch.argsort(values,dim=-1,descending=True)
-        t_rerank = time() - tick
-
+        t_rerank = (time() - tick)
+        #frame_t_rerank = t_rerank/batch_size
         rr_nn_ndx_vec = rr_nn_ndx.detach().cpu().numpy().astype(np.uint8)
         re_rank_idx.append(rr_nn_ndx_vec)
-
         global_metrics['t_RR'].append(t_rerank)
+        print(t_rerank)
       
       return(re_rank_idx,global_metrics)
 
@@ -87,25 +83,10 @@ def load_cross_data(root,model_name,seq_train,batch_size=None,**argv):
   else:
     loader = CROSS(root,model_name,seq_train)
 
-  testloader  = loader.get_test_loader()
-  trainloader = loader.get_train_loader(batch_size)
+  testloader  = loader.get_test_loader(1)
+  trainloader = loader.get_train_loader(1)
   max_cand = 25
   return trainloader,testloader,max_cand,str(loader)
-
-
-def load_data(root,model_name,seq,train_percentage,dataset='new',batch_size=50):
-  # Dataset
-  train_data = AlphaQEData(root,model_name,seq)
-  # Compute split sizes
-  train_size = int(len(train_data)*train_percentage)
-  test_size = len(train_data) - train_size
-  # Split of the train and test sets
-  train, test =torch.utils.data.random_split(train_data,[train_size,test_size])
-  # Dataloaders
-  trainloader = DataLoader(train,batch_size = len(train),shuffle=True)
-  testloader = DataLoader(test,batch_size =  len(test)) #
-  return trainloader,testloader,train_data.get_max_top_cand(),str(train_data)
-# LOAD TTRAINING DATA
 
 
 def main(root,model_name,seq,model_fun,loss_fun,**argv):
@@ -133,30 +114,27 @@ def main(root,model_name,seq,model_fun,loss_fun,**argv):
                               lr= 0.001,epochs = 300,lr_step=250,val_report=1,
                               tain_report_terminal=1,device=device,max_top_cand = 25)
 
-
-    ## 
-    count = 0
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     params = sum([np.prod(p.size()) for p in model_parameters])
     print(f'\n# Model parameters: {params}\n')
     print(params)
-      #count= count + len(parameter)
-    
-      
+
     rerank.Train(trainloader,testloader)
 
 if __name__=='__main__':
   
   #root = "/home/deep/Dropbox/SHARE/deepisrpc/reranking/LoGG3D-Net/evaluation/10000pts/"
-  root = '/home/tiago/Dropbox/SHARE/deepisrpc/reranking/LoGG3D-Net/evaluation/10000pts/'
+  #root = '/home/tiago/Dropbox/SHARE/deepisrpc/reranking/LoGG3D-Net/evaluation/10000pts/'
+  root = '/media/tiago/BIG/reranking/predictions/place_recognition/'
 
   dataset = 'kitti'
 
   train_size = 0.2
-  #device = 'cuda:0'
-  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+  device = 'cuda:0'
+  #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+  #device = 'cpu'
 
-  Models = ['LoGGNet3D']#,'ORCHNet_pointnet','VLAD_pointnet','SPoC_pointnet', 'GeM_pointnet']
+  Models = ['SPoC_pointnet','GeM_pointnet']#,'ORCHNet_pointnet','VLAD_pointnet']#,'LoGGNet3D']#,'ORCHNet_pointnet','VLAD_pointnet','SPoC_pointnet', 'GeM_pointnet']
   #Models = ['VLAD_pointnet']
   sequences = ['00','02','05','06','08']
   #sequences = ['00']

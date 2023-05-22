@@ -48,6 +48,7 @@ class alpha_QE():
 
             t_rerank = time() - tick
             #global_metrics['t_RR'].append(t_rerank)
+            print(t_rerank)
             t_RR.append(t_rerank)
             rerank_ndx.append(rr_nn_ndx)
 
@@ -146,7 +147,9 @@ if __name__ == '__main__':
     from dataloaders.alphaqedata import AlphaQEData
 
     #root = '/home/tiago/Dropbox/RERANKING-publication/predictions/paper/kitti'
-    root = "/home/deep/Dropbox/SHARE/deepisrpc/reranking/LoGG3D-Net/evaluation/10000pts"
+    #root = "/home/deep/Dropbox/SHARE/deepisrpc/reranking/LoGG3D-Net/evaluation/10000pts"
+    #root = '/home/deep/Dropbox/SHARE/deepisrpc/reranking/LoGG3D-Net/evaluation/10000pts'
+    root = '/home/tiago/Dropbox/SHARE/deepisrpc/reranking/LoGG3D-Net/evaluation/10000pts/'
     train_size = 0.2
     device = 'cuda:0'
     #device = 'cpu'
