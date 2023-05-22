@@ -20,8 +20,6 @@ from losses.logistic_loss import logistic_loss
 from models import pipeline
 # =====================================================
 
-   
-
       
 class AttentionTrainer(ReRankingTrainer):
   def __init__(self,**args):
