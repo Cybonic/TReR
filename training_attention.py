@@ -137,13 +137,11 @@ if __name__=='__main__':
   sequences = ['00','02','05','06','08']
   #sequences = ['00']
   model_list = ['tranformerencoder_max_fc_drop','tranformerencoder_wout_fc_drop','tranformerencoder_cnn_fc_drop']
-  #              'attention_max_fc_drop','attention_wout_fc_drop','attention_cnn_fc_drop']
+
   model_list = ['tranformerencoder_max_fc_drop']#'tranformerencoder_max_fc_drop']#,'attention_max_fc_drop'] 'tranformerencoder_mlpd']#
   
-  #model_list = ['attention_max_fc_drop']
-  #model_list = ['max_fc']
   loss_list  = [logistic_loss]#,margin_ranking_loss]
-  #for train_size in range(1,9):
+
   batch_sizes = [1000,500,100,50,20,10]
   batch_sizes = [100]
   for model_obj in model_list:
